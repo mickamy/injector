@@ -30,7 +30,7 @@ type ContainerField struct {
 
 	TagRaw    string
 	InjectRaw string
-	Inject    InjectorTag
+	Inject    InjectTag
 
 	Position string
 }
@@ -134,7 +134,7 @@ func collectContainerFields(pkg *packages.Package, fl *ast.FieldList) ([]Contain
 
 		tagRaw, injectRaw := parseStructTag(f.Tag)
 
-		var parsed InjectorTag
+		var parsed InjectTag
 		if hasInjectKey(tagRaw) {
 			t, err := parseInjectorTag(injectRaw)
 			if err != nil {

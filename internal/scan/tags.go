@@ -6,21 +6,21 @@ import (
 	"strings"
 )
 
-// InjectorTag represents a parsed `inject:"..."` struct tag.
-type InjectorTag struct {
+// InjectTag represents a parsed `inject:"..."` struct tag.
+type InjectTag struct {
 	Provider string
 }
 
 // parseInjectorTag parses a raw struct tag value for the `inject` key.
 // Supported directives (comma-separated):
 // - provider:<FuncName>
-func parseInjectorTag(raw string) (InjectorTag, error) {
+func parseInjectorTag(raw string) (InjectTag, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return InjectorTag{}, nil
+		return InjectTag{}, nil
 	}
 
-	var out InjectorTag
+	var out InjectTag
 	parts, err := splitDirectives(raw)
 	if err != nil {
 		return out, fmt.Errorf("failed to split directives %q: %w", raw, err)
@@ -29,20 +29,20 @@ func parseInjectorTag(raw string) (InjectorTag, error) {
 	for _, part := range parts {
 		key, val, ok := cutKV(part)
 		if !ok {
-			return InjectorTag{}, errors.New("invalid injector tag directive")
+			return InjectTag{}, errors.New("invalid injector tag directive")
 		}
 
 		switch key {
 		case "provider":
 			if val == "" {
-				return InjectorTag{}, errors.New("provider requires a value")
+				return InjectTag{}, errors.New("provider requires a value")
 			}
 			if out.Provider != "" {
-				return InjectorTag{}, errors.New("provider already set")
+				return InjectTag{}, errors.New("provider already set")
 			}
 			out.Provider = val
 		default:
-			return InjectorTag{}, errors.New("unknown injector tag directive")
+			return InjectTag{}, errors.New("unknown injector tag directive")
 		}
 	}
 
