@@ -3,6 +3,8 @@ package cli
 import (
 	"io"
 	"os"
+
+	"github.com/mickamy/injector/internal/prints"
 )
 
 // App is the entry point for the CLI application.
@@ -44,23 +46,23 @@ func (a *App) Run(args []string) int {
 }
 
 func (a *App) printUsage() {
-	fprintln(a.err, "injector is a Go DI code generator.")
-	fprintln(a.err, "")
-	fprintln(a.err, "Usage:")
-	fprintln(a.err, "  injector <command> [flags]")
-	fprintln(a.err, "")
-	fprintln(a.err, "Commands:")
-	fprintln(a.err, "  generate   Generate injector code for packages")
-	fprintln(a.err, "  version    Print version information")
-	fprintln(a.err, "  help       Show help")
+	prints.Fprintln(a.err, "injector is a Go DI code generator.")
+	prints.Fprintln(a.err, "")
+	prints.Fprintln(a.err, "Usage:")
+	prints.Fprintln(a.err, "  injector <command> [flags]")
+	prints.Fprintln(a.err, "")
+	prints.Fprintln(a.err, "Commands:")
+	prints.Fprintln(a.err, "  generate   Generate injector code for packages")
+	prints.Fprintln(a.err, "  version    Print version information")
+	prints.Fprintln(a.err, "  help       Show help")
 }
 
 func (a *App) printUnknownCommand(cmd string) {
-	fprintln(a.err, "unknown command:", cmd)
-	fprintln(a.err, "")
+	prints.Fprintln(a.err, "unknown command:", cmd)
+	prints.Fprintln(a.err, "")
 	a.printUsage()
 }
 
 func (a *App) printVersion() {
-	fprintln(a.out, a.version)
+	prints.Fprintln(a.out, a.version)
 }

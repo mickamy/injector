@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mickamy/injector/internal/prints"
 	"github.com/mickamy/injector/internal/scan"
 	"github.com/mickamy/injector/internal/workspace"
 )
@@ -12,13 +13,13 @@ import (
 // runGenerate handles the `generate` subcommand.
 func (a *App) runGenerate(args []string) int {
 	if len(args) == 0 {
-		fprintln(a.err, generateUsage())
+		prints.Fprintln(a.err, generateUsage())
 		return 2
 	}
 
 	flags, rest, err := parseGenerateFlags(args)
 	if err != nil {
-		fprintln(a.err, wrapFlagError(err))
+		prints.Fprintln(a.err, wrapFlagError(err))
 		return 2
 	}
 
@@ -30,10 +31,10 @@ func (a *App) runGenerate(args []string) int {
 	}
 
 	if flags.Verbose {
-		fprintln(a.out, "output:", outFile)
+		prints.Fprintln(a.out, "output:", outFile)
 
 		if flags.Tags != "" {
-			fprintln(a.out, "tags:", flags.Tags)
+			prints.Fprintln(a.out, "tags:", flags.Tags)
 		}
 	}
 
@@ -42,46 +43,46 @@ func (a *App) runGenerate(args []string) int {
 		Tests:     false,
 	})
 	if err != nil {
-		fprintln(a.err, err.Error())
+		prints.Fprintln(a.err, err.Error())
 		return 1
 	}
 
 	if flags.Verbose {
-		fprintln(a.out, "number of packages:", len(loaded.Packages))
+		prints.Fprintln(a.out, "number of packages:", len(loaded.Packages))
 	}
 
 	containers, err := scan.CollectContainers(loaded.Packages)
 	if err != nil {
-		fprintln(a.err, err.Error())
+		prints.Fprintln(a.err, err.Error())
 		return 1
 	}
 	if len(containers) == 0 {
-		fprintln(a.err, "no container found")
+		prints.Fprintln(a.err, "no container found")
 		return 1
 	}
 
 	providers, err := scan.CollectProviders(loaded.Packages)
 	if err != nil {
-		fprintln(a.err, err.Error())
+		prints.Fprintln(a.err, err.Error())
 		return 1
 	}
 
 	if flags.Verbose {
-		fprintln(a.out, "containers:", len(containers))
+		prints.Fprintln(a.out, "containers:", len(containers))
 		for _, c := range containers {
-			fprintf(a.out, "container: %s.%s (%s)\n", c.PkgPath, c.Name, c.Position)
+			prints.Fprintf(a.out, "container: %s.%s (%s)\n", c.PkgPath, c.Name, c.Position)
 			for _, f := range c.Fields {
 				if f.InjectRaw != "" {
-					fprintf(a.out, "  field: %s %s inject=%q (%s)\n", f.Name, f.TypeExpr, f.InjectRaw, f.Position)
+					prints.Fprintf(a.out, "  field: %s %s inject=%q (%s)\n", f.Name, f.TypeExpr, f.InjectRaw, f.Position)
 				} else {
-					fprintf(a.out, "  field: %s %s (%s)\n", f.Name, f.TypeExpr, f.Position)
+					prints.Fprintf(a.out, "  field: %s %s (%s)\n", f.Name, f.TypeExpr, f.Position)
 				}
 			}
 		}
 
-		fprintln(a.out, "providers:", len(providers))
+		prints.Fprintln(a.out, "providers:", len(providers))
 		for _, p := range providers {
-			fprintf(a.out, "provider: %s.%s -> %s (%s)\n", p.PkgPath, p.Name, p.ResultString, p.Position)
+			prints.Fprintf(a.out, "provider: %s.%s -> %s (%s)\n", p.PkgPath, p.Name, p.ResultString, p.Position)
 		}
 	}
 
