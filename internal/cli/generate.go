@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+
+	"github.com/mickamy/injector/internal/workspace"
 )
 
 // runGenerate handles the `generate` subcommand.
@@ -28,6 +30,23 @@ func (a *App) runGenerate(args []string) int {
 
 	if flags.Verbose {
 		fprintln(a.out, "output:", outFile)
+
+		if flags.Tags != "" {
+			fprintln(a.out, "tags:", flags.Tags)
+		}
+	}
+
+	loaded, err := workspace.Load(patterns, workspace.LoadConfig{
+		BuildTags: splitTags(flags.Tags),
+		Tests:     false,
+	})
+	if err != nil {
+		fprintln(a.err, err.Error())
+		return 1
+	}
+
+	if flags.Verbose {
+		fprintln(a.out, "number of packages:", len(loaded.Packages))
 	}
 
 	fprintln(a.out, "patterns:", patterns)
@@ -38,6 +57,7 @@ func (a *App) runGenerate(args []string) int {
 // generateFlags holds flags for the `generate` subcommand.
 type generateFlags struct {
 	Output  string
+	Tags    string
 	Verbose bool
 }
 
@@ -49,6 +69,7 @@ func parseGenerateFlags(args []string) (generateFlags, []string, error) {
 	fs.SetOutput(nil) // prevent flag package from writing to stdout/stderr automatically
 
 	fs.StringVar(&gf.Output, "o", "", "output file name (default: injector_gen.go)")
+	fs.StringVar(&gf.Tags, "tags", "", "comma-separated build tags (optional)")
 	fs.BoolVar(&gf.Verbose, "v", false, "enable verbose output")
 	fs.BoolVar(&gf.Verbose, "verbose", false, "enable verbose output")
 
@@ -81,4 +102,23 @@ func wrapFlagError(err error) string {
 		return ""
 	}
 	return fmt.Sprintf("%v\n\n%s", err, generateUsage())
+}
+
+// splitTags splits a comma-separated build tag string into a slice.
+func splitTags(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
