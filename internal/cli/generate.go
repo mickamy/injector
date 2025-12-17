@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mickamy/injector/internal/scan"
 	"github.com/mickamy/injector/internal/workspace"
 )
 
@@ -49,7 +50,40 @@ func (a *App) runGenerate(args []string) int {
 		fprintln(a.out, "number of packages:", len(loaded.Packages))
 	}
 
-	fprintln(a.out, "patterns:", patterns)
+	containers, err := scan.CollectContainers(loaded.Packages)
+	if err != nil {
+		fprintln(a.err, err.Error())
+		return 1
+	}
+	if len(containers) == 0 {
+		fprintln(a.err, "no container found")
+		return 1
+	}
+
+	providers, err := scan.CollectProviders(loaded.Packages)
+	if err != nil {
+		fprintln(a.err, err.Error())
+		return 1
+	}
+
+	if flags.Verbose {
+		fprintln(a.out, "containers:", len(containers))
+		for _, c := range containers {
+			fprintf(a.out, "container: %s.%s (%s)\n", c.PkgPath, c.Name, c.Position)
+			for _, f := range c.Fields {
+				if f.InjectRaw != "" {
+					fprintf(a.out, "  field: %s %s inject=%q (%s)\n", f.Name, f.TypeExpr, f.InjectRaw, f.Position)
+				} else {
+					fprintf(a.out, "  field: %s %s (%s)\n", f.Name, f.TypeExpr, f.Position)
+				}
+			}
+		}
+
+		fprintln(a.out, "providers:", len(providers))
+		for _, p := range providers {
+			fprintf(a.out, "provider: %s.%s -> %s (%s)\n", p.PkgPath, p.Name, p.ResultString, p.Position)
+		}
+	}
 
 	return 0
 }
