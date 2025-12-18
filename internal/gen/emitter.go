@@ -7,6 +7,7 @@ import (
 	"go/format"
 	"go/types"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -61,8 +62,16 @@ func EmitContainer(in EmitInput) ([]byte, error) {
 	// Build local variable plan: typeKey -> varName
 	varByType := map[string]string{}
 
+	returnErr := slices.ContainsFunc(in.Providers, func(provider *resolve.Provider) bool {
+		return provider.ReturnError
+	})
+
 	prints.Fprintf(&buf, "// %s initializes dependencies and constructs %s.\n", in.FuncName, in.ContainerName)
-	prints.Fprintf(&buf, "func %s() *%s {\n", in.FuncName, in.ContainerName)
+	if returnErr {
+		prints.Fprintf(&buf, "func %s() (*%s, error) {\n", in.FuncName, in.ContainerName)
+	} else {
+		prints.Fprintf(&buf, "func %s() *%s {\n", in.FuncName, in.ContainerName)
+	}
 
 	for _, p := range in.Providers {
 		if p == nil {
@@ -91,7 +100,14 @@ func EmitContainer(in EmitInput) ([]byte, error) {
 			return nil, fmt.Errorf("gen: %w", err)
 		}
 
-		prints.Fprintf(&buf, "\t%s := %s(%s)\n", vname, call, strings.Join(args, ", "))
+		if p.ReturnError {
+			prints.Fprintf(&buf, "\t%s, err := %s(%s)\n", vname, call, strings.Join(args, ", "))
+			prints.Fprint(&buf, "\tif err != nil {\n")
+			prints.Fprint(&buf, "\t\treturn nil, err\n")
+			prints.Fprint(&buf, "\t}\n")
+		} else {
+			prints.Fprintf(&buf, "\t%s := %s(%s)\n", vname, call, strings.Join(args, ", "))
+		}
 		varByType[resKey] = vname
 	}
 
@@ -113,8 +129,13 @@ func EmitContainer(in EmitInput) ([]byte, error) {
 		prints.Fprintf(&buf, "\t\t%s: %s,\n", f.Name, v)
 	}
 
-	buf.WriteString("\t}\n")
-	buf.WriteString("}\n")
+	if returnErr {
+		buf.WriteString("\t}, nil\n")
+		buf.WriteString("}\n")
+	} else {
+		buf.WriteString("\t}\n")
+		buf.WriteString("}\n")
+	}
 
 	src, err := format.Source(buf.Bytes())
 	if err != nil {
