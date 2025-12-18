@@ -6,8 +6,8 @@ Unlike traditional DI frameworks that rely on provider sets or complex wiring DS
 
 The core idea is simple:
 
-> - The Container declares what is injected. 
-> - Providers declare how values are constructed.
+> * The Container declares what is injected.
+> * Providers declare how values are constructed.
 
 ---
 
@@ -34,9 +34,9 @@ type Container struct {
 
 ```
 
-- The `inject` tag is **purely a marker**.
-- It carries no value or configuration by default.
-- It simply signals: *"this field is managed by injector."*
+* The `inject` tag is **purely a marker**.
+* It carries no value or configuration by default.
+* It simply signals: *"this field is managed by injector."*
 
 ### 2. Providers
 
@@ -48,9 +48,20 @@ func NewUser(database *infra.Database) User {
 }
 ```
 
-- Providers are **automatically discovered** during static analysis.
-- Dependencies are **inferred from function parameters**.
-- No manual registration or wiring code is required.
+* Providers are **automatically discovered** during static analysis.
+* Dependencies are **inferred from function parameters**.
+* No manual registration or wiring code is required.
+
+Providers may optionally return an `error` as their second return value:
+
+```go
+func NewDatabase(cfg config.Database) (*Database, error) {
+	// initialization logic
+}
+```
+
+* If a provider returns `(T, error)`, injector treats it as a valid provider for `T`.
+* Errors are propagated through the generated code and must be handled by the caller.
 
 ---
 
@@ -58,10 +69,10 @@ func NewUser(database *infra.Database) User {
 
 The marker-only `inject` tag serves several important purposes:
 
-- Makes injected fields **explicit and auditable**.
-- Prevents accidental injection of unrelated struct fields.
-- Clearly identifies the struct acting as the Container.
-- Provides a foundation for future extensions without breaking compatibility.
+* Makes injected fields **explicit and auditable**.
+* Prevents accidental injection of unrelated struct fields.
+* Clearly identifies the struct acting as the Container.
+* Provides a foundation for future extensions without breaking compatibility.
 
 The tag is intentionally minimal:
 
@@ -91,14 +102,14 @@ func (u *user) Register(name string, password string) error {
 	return nil
 }
 
-func NewUser(db infra.Database) User {
-	return &user{DB: db}
+func NewUser(db infra.Database) (User, error) {
+	return &user{DB: db}, nil
 }
 ```
 
-- The concrete type remains **unexported**.
-- The provider returns the interface.
-- The Container depends only on the interface, promoting decoupling.
+* The concrete type remains **unexported**.
+* The provider may return `(Interface, error)`.
+* The Container depends only on the interface, promoting decoupling.
 
 ---
 
@@ -112,7 +123,6 @@ See the full example in the `example` directory.
 
 Run the generator:
 
-
 ```bash
 injector generate ./...
 ```
@@ -120,14 +130,20 @@ injector generate ./...
 This produces code similar to the following:
 
 ```go
-func NewContainer() *Container {
+func NewContainer() (*Container, error) {
 	cfg := config.NewDatabase()
-	db := infra.NewDatabase(cfg)
-	srv := service.NewUser(db)
+	db, err := infra.NewDatabase(cfg)
+	if err != nil {
+		return nil, err
+	}
+	srv, err := service.NewUser(db)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Container{
 		Service: srv,
-	}
+	}, nil
 }
 ```
 
@@ -145,9 +161,9 @@ type Container struct {
 }
 ```
 
-- `provider:<FuncName>` specifies the exact constructor function to use.
-- The provider’s return type must match the field type.
-- Dependencies are still automatically resolved from the provider’s parameters.
+* `provider:<FuncName>` specifies the exact constructor function to use.
+* The provider’s first return type must match the field type.
+* Dependencies are still automatically resolved from the provider’s parameters.
 
 ---
 
@@ -162,9 +178,9 @@ type Container struct {
 }
 ```
 
-- The blank field **does not expose** the component publicly.
-- It defines a global provider selection rule for that specific type within the container.
-- Any resolution requiring `infra.Database` will now use `NewReaderDatabase`.
+* The blank field **does not expose** the component publicly.
+* It defines a global provider selection rule for that specific type within the container.
+* Any resolution requiring `infra.Database` will now use `NewReaderDatabase`.
 
 This keeps provider selection centralized while preserving a clean public API.
 
@@ -172,22 +188,29 @@ This keeps provider selection centralized while preserving a clean public API.
 
 ## Dependency Resolution Rules
 
-- **A valid provider** is a function that:
-  - Has no receiver (top-level function).
-  - Returns exactly one value.
+* **A valid provider** is a function that:
+
+  * Has no receiver (top-level function).
+  * Returns either:
+
+    * Exactly one value `(T)`, or
+    * Two values `(T, error)`.
 * **Dependencies are resolved from:**
-  - The provider function specified by `inject:"provider:<FuncName>"`.
-  - The unique provider function that matches the required type.
-- **Selection Logic:**
-  - Automatic if a single provider matches the type.
-  - Explicit `inject:"provider:<FuncName>"` required if multiple providers match.
-- **Generation Fails if:**
-  - A dependency has no provider.
-  - Ambiguous providers exist without an explicit directive.
-  - Cyclic dependencies are detected.
+
+  * The provider function specified by `inject:"provider:<FuncName>"`.
+  * The unique provider function that matches the required type.
+* **Selection Logic:**
+
+  * Automatic if a single provider matches the type.
+  * Explicit `inject:"provider:<FuncName>"` required if multiple providers match.
+* **Generation Fails if:**
+
+  * A dependency has no provider.
+  * Ambiguous providers exist without an explicit directive.
+  * Cyclic dependencies are detected.
 
 ---
 
 ## License
 
-[MIT](https://www.google.com/search?q=./LICENSE)
+[MIT](./LICENSE)
