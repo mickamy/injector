@@ -5,6 +5,10 @@ import (
 	"io"
 )
 
+func Fprint(w io.Writer, a ...any) {
+	_, _ = fmt.Fprint(w, a...)
+}
+
 func Fprintln(w io.Writer, a ...any) {
 	_, _ = fmt.Fprintln(w, a...)
 }
