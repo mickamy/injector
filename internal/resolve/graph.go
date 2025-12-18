@@ -150,7 +150,7 @@ func collectOverrides(fields []ContainerField, byName map[string]*Provider) (map
 		}
 		p, err := lookupProviderByDirective(byName, f.Inject.Provider)
 		if err != nil {
-			return nil, fmt.Errorf("override: %v", err)
+			return nil, fmt.Errorf("override: %w", err)
 		}
 		out[typeKey(f.Type)] = p
 	}
