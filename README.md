@@ -42,8 +42,6 @@ type Container struct {
 
 A **provider** is any top-level function that constructs a value.
 
-Go
-
 ```go
 func NewUser(database *infra.Database) User {
 	return &user{database: database}
@@ -187,16 +185,6 @@ This keeps provider selection centralized while preserving a clean public API.
   - A dependency has no provider.
   - Ambiguous providers exist without an explicit directive.
   - Cyclic dependencies are detected.
-
----
-
-## Design Philosophy
-
-- Prefer **Go’s type system** over external configuration.
-- Make dependency injection **explicit but minimal**.
-- Keep application logic **free from DI-specific code**.
-- **Centralize wiring** in a single, readable location.
-- **Fail fast** at generation time.
 
 ---
 
