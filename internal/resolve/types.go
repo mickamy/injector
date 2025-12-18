@@ -24,11 +24,12 @@ type Node struct {
 // It is treated as immutable during resolution and is shared across the
 // dependency graph for cycle detection and override resolution.
 type Provider struct {
-	PkgPath    string
-	Name       string
-	ResultType types.Type
-	Params     []types.Type
-	Position   string
+	PkgPath     string
+	Name        string
+	ResultType  types.Type
+	ReturnError bool
+	Params      []types.Type
+	Position    string
 }
 
 // ContainerField represents an injectable field in a Container struct.

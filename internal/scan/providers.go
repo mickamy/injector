@@ -16,6 +16,7 @@ type ProviderSpec struct {
 	Name         string
 	ResultType   types.Type
 	ResultString string
+	ReturnError  bool
 	Params       []types.Type
 	Position     string
 }
@@ -68,7 +69,7 @@ func collectProvidersInPackage(pkg *packages.Package) ([]ProviderSpec, error) {
 				continue
 			}
 			if fd.Recv != nil {
-				// Methods are not providers in MVP.
+				// Methods are not providers.
 				continue
 			}
 			if fd.Name == nil || fd.Name.Name == "" {
@@ -77,13 +78,13 @@ func collectProvidersInPackage(pkg *packages.Package) ([]ProviderSpec, error) {
 			if fd.Type == nil || fd.Type.Results == nil {
 				continue
 			}
-			if len(fd.Type.Results.List) != 1 {
-				// Require exactly 1 result.
+			if rl := len(fd.Type.Results.List); rl != 1 && rl != 2 {
+				// Require exactly 1 or 2 result(s).
 				continue
 			}
 
-			res := fd.Type.Results.List[0]
-			if res == nil || res.Type == nil {
+			firstRes := fd.Type.Results.List[0]
+			if firstRes == nil || firstRes.Type == nil {
 				continue
 			}
 
@@ -91,7 +92,7 @@ func collectProvidersInPackage(pkg *packages.Package) ([]ProviderSpec, error) {
 				continue
 			}
 
-			resType := pkg.TypesInfo.TypeOf(res.Type)
+			resType := pkg.TypesInfo.TypeOf(firstRes.Type)
 			if resType == nil {
 				continue
 			}
@@ -117,6 +118,17 @@ func collectProvidersInPackage(pkg *packages.Package) ([]ProviderSpec, error) {
 				continue
 			}
 
+			var returnError bool
+			if len(fd.Type.Results.List) == 2 {
+				secondRes := fd.Type.Results.List[1]
+				if secondRes != nil && secondRes.Type != nil {
+					secondResType := pkg.TypesInfo.TypeOf(secondRes.Type)
+					if secondResType != nil && isBuiltinError(secondResType) {
+						returnError = true
+					}
+				}
+			}
+
 			params := extractParamTypes(sig)
 
 			out = append(out, ProviderSpec{
@@ -130,8 +142,9 @@ func collectProvidersInPackage(pkg *packages.Package) ([]ProviderSpec, error) {
 					}
 					return p.Name()
 				}),
-				Params:   params,
-				Position: position(pkg.Fset, fd.Pos()),
+				ReturnError: returnError,
+				Params:      params,
+				Position:    position(pkg.Fset, fd.Pos()),
 			})
 		}
 	}
