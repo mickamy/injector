@@ -66,6 +66,7 @@ func ConvertProviders(ps []scan.ProviderSpec) ([]*Provider, error) {
 		out = append(out, &Provider{
 			PkgPath:     p.PkgPath,
 			Name:        p.Name,
+			NameWithPkg: strings.Join([]string{p.PkgPath, p.Name}, "."),
 			ResultType:  p.ResultType,
 			ReturnError: p.ReturnError,
 			Params:      p.Params,

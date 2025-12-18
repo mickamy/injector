@@ -26,6 +26,7 @@ type Node struct {
 type Provider struct {
 	PkgPath     string
 	Name        string
+	NameWithPkg string
 	ResultType  types.Type
 	ReturnError bool
 	Params      []types.Type

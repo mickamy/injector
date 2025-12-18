@@ -56,9 +56,17 @@ func resolveField(
 
 	if f.Inject.Provider != "" {
 		var err error
-		p, err = lookupProviderByDirective(byName, f.Inject.Provider)
+		ps, err := lookupProviderByDirective(byName, f.Inject.Provider)
 		if err != nil {
 			return nil, err
+		}
+		for _, provider := range ps {
+			if provider.ResultType == f.Type {
+				p = provider
+			}
+		}
+		if p == nil {
+			return nil, fmt.Errorf("failed to resolve provider %s", f.Inject.Provider)
 		}
 	} else if o, ok := overrides[typeKey(f.Type)]; ok {
 		p = o
@@ -148,25 +156,40 @@ func collectOverrides(fields []ContainerField, byName map[string]*Provider) (map
 		if f.Inject.Provider == "" {
 			continue
 		}
-		p, err := lookupProviderByDirective(byName, f.Inject.Provider)
+		ps, err := lookupProviderByDirective(byName, f.Inject.Provider)
 		if err != nil {
-			return nil, fmt.Errorf("override: %w", err)
+			return nil, err
+		}
+		var p *Provider
+		for _, provider := range ps {
+			if provider.ResultType == f.Type {
+				p = provider
+			}
+		}
+		if p == nil {
+			return nil, fmt.Errorf("failed to resolve provider %s", f.Inject.Provider)
 		}
 		out[typeKey(f.Type)] = p
 	}
 	return out, nil
 }
 
-func lookupProviderByDirective(byName map[string]*Provider, directive string) (*Provider, error) {
+func lookupProviderByDirective(byName map[string]*Provider, directive string) ([]*Provider, error) {
 	if p, ok := byName[directive]; ok {
-		return p, nil
+		return []*Provider{p}, nil
 	}
 
 	if i := strings.LastIndexByte(directive, '.'); i >= 0 && i+1 < len(directive) {
 		short := directive[i+1:]
-		if p, ok := byName[short]; ok {
-			return p, nil
+
+		var providers []*Provider
+		for k, provider := range byName {
+			if strings.HasSuffix(k, short) {
+				providers = append(providers, provider)
+			}
 		}
+
+		return providers, nil
 	}
 
 	return nil, fmt.Errorf("provider %q not found", directive)
@@ -189,14 +212,14 @@ func indexProvidersByNameStrict(ps []*Provider) (map[string]*Provider, error) {
 		if p.Name == "" {
 			continue
 		}
-		if existing, ok := m[p.Name]; ok {
+		if existing, ok := m[p.NameWithPkg]; ok {
 			conflicts = append(
 				conflicts,
 				fmt.Sprintf("resolve: %s %s conflicts with %s", p.Name, providerString(existing), providerString(p)),
 			)
 			continue
 		}
-		m[p.Name] = p
+		m[p.NameWithPkg] = p
 	}
 
 	if len(conflicts) > 0 {
