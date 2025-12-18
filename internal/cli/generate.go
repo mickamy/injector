@@ -97,6 +97,7 @@ func (a *App) runGenerate(args []string) int {
 	}
 
 	var failed bool
+	generatedFiles := make(map[string]struct{})
 	for _, c := range containers {
 		fields, err := resolve.ConvertContainerFields(c)
 		if err != nil {
@@ -135,26 +136,36 @@ func (a *App) runGenerate(args []string) int {
 			continue
 		}
 
-		bytes, err := gen.EmitContainer(gen.EmitInput{
+		// Output directory: use the directory of the container's file path.
+		// We already have c.Position as "file:line:col", so derive the file part.
+		outDir := filepath.Dir(positionFile(c.Position))
+		outPath := filepath.Join(outDir, outFile)
+		emitInput := gen.EmitInput{
 			PackageName:      c.PkgName,
 			ContainerName:    c.Name,
 			Fields:           fields,
 			Providers:        ordered,
 			ContainerPkgPath: c.PkgPath,
 			FuncName:         "New" + c.Name,
-		})
+		}
+		if _, ok := generatedFiles[outPath]; !ok {
+			if err := os.Remove(outPath); err != nil && !os.IsNotExist(err) {
+				prints.Fprintln(a.err, err.Error())
+				failed = true
+				continue
+			}
+			emitInput.IncludeHeader = true
+			generatedFiles[outPath] = struct{}{}
+		}
+
+		bytes, err := gen.EmitContainer(emitInput)
 		if err != nil {
 			prints.Fprintln(a.err, err.Error())
 			failed = true
 			continue
 		}
 
-		// Output directory: use the directory of the container's file path.
-		// We already have c.Position as "file:line:col", so derive the file part.
-		outDir := filepath.Dir(positionFile(c.Position))
-		outPath := filepath.Join(outDir, outFile)
-
-		if err := os.WriteFile(outPath, bytes, 0o644); err != nil {
+		if err := a.write(bytes, outPath); err != nil {
 			prints.Fprintln(a.err, err.Error())
 			failed = true
 			continue
@@ -171,6 +182,23 @@ func (a *App) runGenerate(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+func (a *App) write(bytes []byte, outPath string) error {
+	f, err := os.OpenFile(outPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer func(f *os.File) {
+		_ = f.Close()
+	}(f)
+
+	_, err = f.Write(bytes)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // generateFlags holds flags for the `generate` subcommand.
