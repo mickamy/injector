@@ -3,9 +3,9 @@
 package main
 
 import (
-	config "github.com/mickamy/injector/example/config"
-	infra "github.com/mickamy/injector/example/infra"
-	service "github.com/mickamy/injector/example/service"
+	config "github.com/mickamy/injector/example/with-error/config"
+	infra "github.com/mickamy/injector/example/with-error/infra"
+	service "github.com/mickamy/injector/example/with-error/service"
 )
 
 // NewContainer initializes dependencies and constructs Container.
