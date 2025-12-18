@@ -11,6 +11,16 @@ The core idea is simple:
 
 ---
 
+## Install
+
+Install `injector` using `go install`:
+
+```bash
+go install github.com/mickamy/injector@latest
+```
+
+---
+
 ## Core Concepts
 
 ### 1. Container
