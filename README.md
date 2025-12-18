@@ -4,7 +4,7 @@
 
 Unlike traditional DI frameworks that rely on provider sets or complex wiring DSLs, injector uses **Go’s type system** and a minimal marker tag to describe dependency injection in a clear and explicit way.
 
-The core idea is simple:
+The core idea is with-error:
 
 > * The Container declares what is injected.
 > * Providers declare how values are constructed.

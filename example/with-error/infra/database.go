@@ -1,7 +1,7 @@
 package infra
 
 import (
-	"github.com/mickamy/injector/example/config"
+	"github.com/mickamy/injector/example/with-error/config"
 )
 
 type Database struct {

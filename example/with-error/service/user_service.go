@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/mickamy/injector/example/infra"
+	"github.com/mickamy/injector/example/with-error/infra"
 )
 
 type User interface {
