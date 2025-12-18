@@ -3,9 +3,13 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/mickamy/injector/internal/gen"
 	"github.com/mickamy/injector/internal/prints"
+	"github.com/mickamy/injector/internal/resolve"
 	"github.com/mickamy/injector/internal/scan"
 	"github.com/mickamy/injector/internal/workspace"
 )
@@ -86,6 +90,86 @@ func (a *App) runGenerate(args []string) int {
 		}
 	}
 
+	rproviders, err := resolve.ConvertProviders(providers)
+	if err != nil {
+		prints.Fprintln(a.err, err.Error())
+		return 1
+	}
+
+	var failed bool
+	for _, c := range containers {
+		fields, err := resolve.ConvertContainerFields(c)
+		if err != nil {
+			prints.Fprintln(a.err, err.Error())
+			failed = true
+			continue
+		}
+		if len(fields) == 0 {
+			prints.Fprintf(a.err, "no injectable fields found in container: %s.%s (%s)\n", c.PkgPath, c.Name, c.Position)
+			failed = true
+			continue
+		}
+
+		g, err := resolve.BuildGraph(fields, rproviders)
+		if err != nil {
+			prints.Fprintln(a.err, err.Error())
+			failed = true
+			continue
+		}
+
+		ordered, err := resolve.OrderProviders(g)
+		if err != nil {
+			prints.Fprintln(a.err, err.Error())
+			failed = true
+			continue
+		}
+
+		if len(ordered) == 0 {
+			prints.Fprintf(
+				a.err,
+				"resolve: no providers selected for container %s.%s\n",
+				c.PkgPath,
+				c.Name,
+			)
+			failed = true
+			continue
+		}
+
+		bytes, err := gen.EmitContainer(gen.EmitInput{
+			PackageName:      c.PkgName,
+			ContainerName:    c.Name,
+			Fields:           fields,
+			Providers:        ordered,
+			ContainerPkgPath: c.PkgPath,
+			FuncName:         "New" + c.Name,
+		})
+		if err != nil {
+			prints.Fprintln(a.err, err.Error())
+			failed = true
+			continue
+		}
+
+		// Output directory: use the directory of the container's file path.
+		// We already have c.Position as "file:line:col", so derive the file part.
+		outDir := filepath.Dir(positionFile(c.Position))
+		outPath := filepath.Join(outDir, outFile)
+
+		if err := os.WriteFile(outPath, bytes, 0o644); err != nil {
+			prints.Fprintln(a.err, err.Error())
+			failed = true
+			continue
+		}
+
+		if flags.Verbose {
+			prints.Fprintf(a.out, "resolve: ok (%s.%s)\n", c.PkgPath, c.Name)
+		}
+		prints.Fprintln(a.out, "generate:", outPath)
+	}
+
+	if failed {
+		prints.Fprintln(a.err, "generation failed")
+		return 1
+	}
 	return 0
 }
 
@@ -156,4 +240,18 @@ func splitTags(s string) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+func positionFile(pos string) string {
+	// pos format: "/path/to/file.go:line:col"
+	// We split from the right to keep Windows drive letters safe-ish.
+	i := strings.LastIndexByte(pos, ':')
+	if i < 0 {
+		return pos
+	}
+	j := strings.LastIndexByte(pos[:i], ':')
+	if j < 0 {
+		return pos[:i]
+	}
+	return pos[:j]
 }
