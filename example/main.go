@@ -11,3 +11,10 @@ type Container struct {
 	Database    *infra.Database       `inject:""`
 	UserService service.User          `inject:""`
 }
+
+func init() {
+	container := NewContainer()
+	if err := container.UserService.Register("alice", "P@ssw0rd"); err != nil {
+		panic(err)
+	}
+}
