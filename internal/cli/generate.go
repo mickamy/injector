@@ -171,7 +171,7 @@ func (a *App) runGenerate(args []string) int {
 			generatedFiles[outPath] = struct{}{}
 		}
 
-		bytes, err := gen.EmitContainer(inputs)
+		bytes, err := gen.EmitContainers(inputs)
 		if err != nil {
 			prints.Fprintln(a.err, err.Error())
 			failed = true
