@@ -154,6 +154,7 @@ func (a *App) runGenerate(args []string) int {
 		} else {
 			emitInputs[outPath] = gen.EmitInput{
 				PackageName: c.PkgName,
+				OnError:     flags.OnError,
 				Containers: []gen.Container{{
 					Name:      c.Name,
 					Fields:    fields,
@@ -220,7 +221,7 @@ func (a *App) write(bytes []byte, outPath string) error {
 type generateFlags struct {
 	Output  string
 	Must    bool
-	OnError config.OnError
+	OnError *config.OnError
 	Tags    string
 	Verbose bool
 }
@@ -232,11 +233,11 @@ func parseGenerateFlags(args []string) (generateFlags, []string, error) {
 	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
 	fs.SetOutput(nil) // prevent flag package from writing to stdout/stderr automatically
 
-	var onError string
+	var onErrorRaw string
 	fs.StringVar(&gf.Output, "o", "", "output file name (default: injector_gen.go)")
 	fs.StringVar(&gf.Tags, "tags", "", "comma-separated build tags (optional)")
 	fs.BoolVar(&gf.Must, "must", false, "generate MustNew* constructors that crash on failure (optional)")
-	fs.StringVar(&onError, "on-error", "", "error handling for MustNew* (panic|fatal). Requires --must (default: panic)")
+	fs.StringVar(&onErrorRaw, "on-error", "", "error handling for MustNew* (panic|fatal). Requires --must (default: panic)")
 	fs.BoolVar(&gf.Verbose, "v", false, "enable verbose output")
 	fs.BoolVar(&gf.Verbose, "verbose", false, "enable verbose output")
 
@@ -244,14 +245,12 @@ func parseGenerateFlags(args []string) (generateFlags, []string, error) {
 		return generateFlags{}, nil, err
 	}
 
-	if onError == "" {
-		onError = "panic"
-	}
-
-	var err error
-	gf.OnError, err = config.NewOnError(onError)
-	if err != nil {
-		return generateFlags{}, nil, fmt.Errorf("invalid on-error value: %w", err)
+	if onErrorRaw != "" {
+		onError, err := config.NewOnError(onErrorRaw)
+		if err != nil {
+			return generateFlags{}, nil, fmt.Errorf("invalid on-error value: %w", err)
+		}
+		gf.OnError = &onError
 	}
 
 	return gf, fs.Args(), nil
