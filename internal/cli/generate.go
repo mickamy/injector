@@ -113,7 +113,7 @@ func (a *App) runGenerate(args []string) int {
 
 		g, err := resolve.BuildGraph(fields, rproviders)
 		if err != nil {
-			prints.Fprintln(a.err, err.Error())
+			prints.Fprintln(a.err, fmt.Sprintf("failed to build graph for container %s.%s: %v", c.PkgPath, c.Name, err))
 			failed = true
 			continue
 		}
