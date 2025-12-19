@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mickamy/injector/internal/config"
 	"github.com/mickamy/injector/internal/gen"
 	"github.com/mickamy/injector/internal/prints"
 	"github.com/mickamy/injector/internal/resolve"
@@ -39,6 +40,10 @@ func (a *App) runGenerate(args []string) int {
 
 		if flags.Tags != "" {
 			prints.Fprintln(a.out, "tags:", flags.Tags)
+		}
+		if flags.Must {
+			prints.Fprintln(a.out, "must:", flags.Must)
+			prints.Fprintln(a.out, "on-error:", flags.OnError)
 		}
 	}
 
@@ -214,6 +219,8 @@ func (a *App) write(bytes []byte, outPath string) error {
 // generateFlags holds flags for the `generate` subcommand.
 type generateFlags struct {
 	Output  string
+	Must    bool
+	OnError config.OnError
 	Tags    string
 	Verbose bool
 }
@@ -225,13 +232,26 @@ func parseGenerateFlags(args []string) (generateFlags, []string, error) {
 	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
 	fs.SetOutput(nil) // prevent flag package from writing to stdout/stderr automatically
 
+	var onError string
 	fs.StringVar(&gf.Output, "o", "", "output file name (default: injector_gen.go)")
 	fs.StringVar(&gf.Tags, "tags", "", "comma-separated build tags (optional)")
+	fs.BoolVar(&gf.Must, "must", false, "generate MustNew* constructors that crash on failure (optional)")
+	fs.StringVar(&onError, "on-error", "", "error handling for MustNew* (panic|fatal). Requires --must (default: panic)")
 	fs.BoolVar(&gf.Verbose, "v", false, "enable verbose output")
 	fs.BoolVar(&gf.Verbose, "verbose", false, "enable verbose output")
 
 	if err := fs.Parse(args); err != nil {
 		return generateFlags{}, nil, err
+	}
+
+	if onError == "" {
+		onError = "panic"
+	}
+
+	var err error
+	gf.OnError, err = config.NewOnError(onError)
+	if err != nil {
+		return generateFlags{}, nil, fmt.Errorf("invalid on-error value: %w", err)
 	}
 
 	return gf, fs.Args(), nil
