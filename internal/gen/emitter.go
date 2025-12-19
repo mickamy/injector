@@ -117,22 +117,10 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 	}
 	prints.Fprintf(buf, "// %s\n", doc)
 
-	returnType := c.Name
-	var shouldReturnPointer bool
-	for _, field := range c.Fields {
-		if isPointer(field.Type) {
-			shouldReturnPointer = true
-			break
-		}
-	}
-	if shouldReturnPointer {
-		returnType = fmt.Sprintf("*%s", returnType)
-	}
-
 	if returnErr {
-		prints.Fprintf(buf, "func %s() (%s, error) {\n", funcName, returnType)
+		prints.Fprintf(buf, "func %s() (*%s, error) {\n", funcName, c.Name)
 	} else {
-		prints.Fprintf(buf, "func %s() %s {\n", funcName, returnType)
+		prints.Fprintf(buf, "func %s() *%s {\n", funcName, c.Name)
 	}
 
 	for _, p := range c.Providers {
@@ -168,11 +156,7 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 			if must {
 				prints.Fprintf(buf, "\t\t%s(err)\n", onError.Func())
 			} else {
-				if shouldReturnPointer {
-					prints.Fprint(buf, "\t\treturn nil, err\n")
-				} else {
-					prints.Fprintf(buf, "\t\treturn %s{}, err\n", c.Name)
-				}
+				prints.Fprint(buf, "\t\treturn nil, err\n")
 			}
 			prints.Fprint(buf, "\t}\n")
 		} else {
@@ -181,11 +165,7 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 		varByType[resKey] = vname
 	}
 
-	if shouldReturnPointer {
-		buf.WriteString("\n\treturn &")
-	} else {
-		buf.WriteString("\n\treturn ")
-	}
+	buf.WriteString("\n\treturn &")
 	buf.WriteString(c.Name)
 	buf.WriteString("{\n")
 
