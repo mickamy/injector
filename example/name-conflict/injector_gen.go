@@ -3,18 +3,18 @@
 package main
 
 import (
-	config "github.com/mickamy/injector/example/name-conflict/config"
+	config2 "github.com/mickamy/injector/example/name-conflict/config"
 	task2 "github.com/mickamy/injector/example/name-conflict/domain/task"
-	user "github.com/mickamy/injector/example/name-conflict/domain/user"
-	infra "github.com/mickamy/injector/example/name-conflict/infra"
+	user3 "github.com/mickamy/injector/example/name-conflict/domain/user"
+	infra2 "github.com/mickamy/injector/example/name-conflict/infra"
 )
 
 // NewTaskContainer initializes dependencies and constructs TaskContainer.
 func NewTaskContainer() *TaskContainer {
-	writerDatabaseConfig := config.NewWriterDatabaseConfig()
-	database := infra.NewDatabase(writerDatabaseConfig)
+	writerDatabaseConfig := config2.NewWriterDatabaseConfig()
+	database := infra2.NewDatabase(writerDatabaseConfig)
 	repository := task2.NewRepository(database)
-	repository2 := user.NewRepository(database)
+	repository2 := user3.NewRepository(database)
 	service := task2.NewService(repository, repository2)
 
 	return &TaskContainer{
@@ -24,10 +24,10 @@ func NewTaskContainer() *TaskContainer {
 
 // NewUserContainer initializes dependencies and constructs UserContainer.
 func NewUserContainer() *UserContainer {
-	writerDatabaseConfig := config.NewWriterDatabaseConfig()
-	database := infra.NewDatabase(writerDatabaseConfig)
-	repository := user2.NewRepository(database)
-	service := user2.NewService(repository)
+	writerDatabaseConfig := config2.NewWriterDatabaseConfig()
+	database := infra2.NewDatabase(writerDatabaseConfig)
+	repository := user3.NewRepository(database)
+	service := user3.NewService(repository)
 
 	return &UserContainer{
 		Service: service,
