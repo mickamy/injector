@@ -182,6 +182,10 @@ func buildImportAliases(aliases map[string]string, containerPkgPath string, prov
 		}
 		alias := base
 
+		if _, ok := aliases[p.PkgPath]; ok {
+			continue
+		}
+
 		if _, ok := used[alias]; ok {
 			for i := 2; ; i++ {
 				try := fmt.Sprintf("%s%d", base, i)
@@ -192,8 +196,8 @@ func buildImportAliases(aliases map[string]string, containerPkgPath string, prov
 			}
 		}
 
-		used[alias] = struct{}{}
 		aliases[p.PkgPath] = alias
+		used[alias] = struct{}{}
 	}
 
 	return nil
