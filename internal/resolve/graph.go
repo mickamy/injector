@@ -22,11 +22,11 @@ func BuildGraph(fields []ContainerField, providers []*Provider) (*Graph, error) 
 	// seen tracks providers that have already been fully resolved.
 	// It is used to avoid re-resolving the same provider multiple times
 	// and to allow shared nodes in the dependency graph (DAG).
-	seen := map[*Provider]bool{}
+	seen := map[*Provider]struct{}{}
 
 	// stack tracks providers that are currently being resolved
 	// in the active DFS path. It is used to detect circular dependencies.
-	stack := map[*Provider]bool{}
+	stack := map[*Provider]struct{}{}
 
 	var roots []*Node
 	for _, f := range fields {
@@ -49,8 +49,8 @@ func resolveField(
 	byType map[string][]*Provider,
 	byName map[string]*Provider,
 	overrides map[string]*Provider,
-	seen map[*Provider]bool,
-	stack map[*Provider]bool,
+	seen map[*Provider]struct{},
+	stack map[*Provider]struct{},
 ) (*Node, error) {
 	var p *Provider
 
@@ -100,21 +100,21 @@ func resolveProvider(
 	byType map[string][]*Provider,
 	byName map[string]*Provider,
 	overrides map[string]*Provider,
-	seen map[*Provider]bool,
-	stack map[*Provider]bool,
+	seen map[*Provider]struct{},
+	stack map[*Provider]struct{},
 ) (*Node, error) {
-	if stack[p] {
+	if _, ok := stack[p]; ok {
 		return nil, fmt.Errorf("circular dependency detected at %s", providerString(p))
 	}
-	if seen[p] {
+	if _, ok := seen[p]; ok {
 		// Note: returning a shallow node is OK for now.
 		// Topological ordering will be generated later from providers, not from node identity.
 		return &Node{Provider: p}, nil
 	}
 
-	stack[p] = true
+	stack[p] = struct{}{}
 	defer delete(stack, p)
-	seen[p] = true
+	seen[p] = struct{}{}
 
 	var deps []*Node
 	for _, t := range p.Params {

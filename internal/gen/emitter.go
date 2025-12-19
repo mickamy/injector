@@ -274,16 +274,16 @@ func varNameForResult(providerName string, existing map[string]string) (string, 
 		return "", errors.New("empty variable name")
 	}
 
-	used := map[string]bool{}
+	used := map[string]struct{}{}
 	for _, v := range existing {
-		used[v] = true
+		used[v] = struct{}{}
 	}
-	if !used[base] {
+	if _, ok := used[base]; !ok {
 		return base, nil
 	}
 	for i := 2; ; i++ {
 		try := fmt.Sprintf("%s%d", base, i)
-		if !used[try] {
+		if _, ok := used[try]; !ok {
 			return try, nil
 		}
 	}
