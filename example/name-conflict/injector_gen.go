@@ -10,26 +10,32 @@ import (
 )
 
 // NewTaskContainer initializes dependencies and constructs TaskContainer.
-func NewTaskContainer() *TaskContainer {
+func NewTaskContainer() (*TaskContainer, error) {
 	writerDatabaseConfig := config.NewWriterDatabaseConfig()
-	database := infra.NewDatabase(writerDatabaseConfig)
+	database, err := infra.NewDatabase(writerDatabaseConfig)
+	if err != nil {
+		return nil, err
+	}
 	repository := task.NewRepository(database)
 	repository2 := user.NewRepository(database)
 	service := task.NewService(repository, repository2)
 
 	return &TaskContainer{
 		Service: service,
-	}
+	}, nil
 }
 
 // NewUserContainer initializes dependencies and constructs UserContainer.
-func NewUserContainer() *UserContainer {
+func NewUserContainer() (*UserContainer, error) {
 	writerDatabaseConfig := config.NewWriterDatabaseConfig()
-	database := infra.NewDatabase(writerDatabaseConfig)
+	database, err := infra.NewDatabase(writerDatabaseConfig)
+	if err != nil {
+		return nil, err
+	}
 	repository := user.NewRepository(database)
 	service := user.NewService(repository)
 
 	return &UserContainer{
 		Service: service,
-	}
+	}, nil
 }

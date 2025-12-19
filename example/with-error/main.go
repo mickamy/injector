@@ -2,13 +2,11 @@ package main
 
 import (
 	"github.com/mickamy/injector/example/with-error/config"
-	"github.com/mickamy/injector/example/with-error/infra"
 	"github.com/mickamy/injector/example/with-error/service"
 )
 
 type Container struct {
 	_           config.DatabaseConfig `inject:"provider:config.NewReaderDatabaseConfig"`
-	Database    *infra.Database       `inject:""`
 	UserService service.User          `inject:""`
 }
 

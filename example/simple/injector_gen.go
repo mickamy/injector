@@ -15,7 +15,6 @@ func NewContainer() *Container {
 	user := service.NewUser(database)
 
 	return &Container{
-		Database:    database,
 		UserService: user,
 	}
 }
