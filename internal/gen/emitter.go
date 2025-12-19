@@ -84,10 +84,23 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 		})
 
 		prints.Fprintf(&buf, "// %s initializes dependencies and constructs %s.\n", c.FuncName, c.Name)
+
+		returnType := c.Name
+		var hasPointer bool
+		for _, field := range c.Fields {
+			if isPointer(field.Type) {
+				hasPointer = true
+				break
+			}
+		}
+		if hasPointer {
+			returnType = fmt.Sprintf("*%s", returnType)
+		}
+
 		if returnErr {
-			prints.Fprintf(&buf, "func %s() (*%s, error) {\n", c.FuncName, c.Name)
+			prints.Fprintf(&buf, "func %s() (%s, error) {\n", c.FuncName, returnType)
 		} else {
-			prints.Fprintf(&buf, "func %s() *%s {\n", c.FuncName, c.Name)
+			prints.Fprintf(&buf, "func %s() %s {\n", c.FuncName, returnType)
 		}
 
 		for _, p := range c.Providers {
@@ -287,4 +300,9 @@ func providerString(p *resolve.Provider) string {
 		return p.Name
 	}
 	return p.PkgPath + "." + p.Name
+}
+
+func isPointer(t types.Type) bool {
+	_, ok := t.(*types.Pointer)
+	return ok
 }
