@@ -146,10 +146,17 @@ func collectContainerFields(pkg *packages.Package, fl *ast.FieldList) ([]Contain
 			continue
 		}
 
-		// Anonymous fields are allowed; we treat the name as the type expression.
+		// Anonymous fields are allowed; we treat the name as the implicit field name.
 		if len(f.Names) == 0 {
+			implicit, ok := embeddedFieldName(f.Type)
+			if !ok {
+				errs = append(errs, fmt.Sprintf("%s: unsupported embedded field type: %s",
+					position(pkg.Fset, f.Pos()), typeExpr))
+				continue
+			}
+
 			out = append(out, ContainerField{
-				Name:      typeExpr,
+				Name:      implicit,
 				TypeExpr:  typeExpr,
 				Type:      typ,
 				TagRaw:    tagRaw,
@@ -253,4 +260,44 @@ func hasInjectKey(tagRaw string) bool {
 
 	// Value form is already handled by Lookup, but keep a conservative fallback.
 	return strings.Contains(tagRaw, `inject:"`)
+}
+
+// embeddedFieldName returns the implicit field name for an embedded field.
+// For example:
+//
+//	*handler.Account -> "Account"
+//	handler.Account  -> "Account"
+//	Account          -> "Account"
+//	*Foo[T]          -> "Foo"
+func embeddedFieldName(t ast.Expr) (string, bool) {
+	// Unwrap pointers: *T -> T
+	for {
+		if se, ok := t.(*ast.StarExpr); ok {
+			t = se.X
+			continue
+		}
+		break
+	}
+
+	// Unwrap generics: Foo[T] -> Foo, pkg.Foo[T,U] -> pkg.Foo
+	for {
+		switch x := t.(type) {
+		case *ast.IndexExpr:
+			t = x.X
+			continue
+		case *ast.IndexListExpr:
+			t = x.X
+			continue
+		}
+		break
+	}
+
+	switch x := t.(type) {
+	case *ast.Ident:
+		return x.Name, true
+	case *ast.SelectorExpr:
+		return x.Sel.Name, true // pkg.Type -> Type
+	default:
+		return "", false
+	}
 }
