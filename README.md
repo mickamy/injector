@@ -187,54 +187,6 @@ func NewContainer() (*Container, error) {
 }
 ```
 
-### Container Return Type
-
-injector determines the return type of the generated constructor based on the **fields of the Container**.
-
-* If the Container has **any pointer-typed field** (e.g. `*Service`, `*Repository`), the generated `New*` function returns a **pointer to the Container**.
-* If **all fields are value types**, the generated `New*` function returns the Container **by value**.
-
-This rule ensures that Containers which hold reference-like components behave consistently and avoid accidental copying.
-
-Examples:
-
-```go
-type Container struct {
-	Service *service.UserService `inject:""`
-}
-```
-
-Generated code:
-
-```go
-func NewContainer() (*Container, error) {
-	// ...
-	return &Container{Service: srv}, nil
-}
-```
-
-If all fields are values:
-
-```go
-type Container struct {
-	Service service.UserService `inject:""`
-}
-```
-
-Generated code:
-
-```go
-func NewContainer() (Container, error) {
-	// ...
-	return Container{Service: srv}, nil
-}
-```
-
-This behavior aligns with common Go conventions:
-
-* Containers that hold pointers represent long-lived, shared objects.
-* Pure value Containers remain lightweight and copyable.
-
 ---
 
 ## Provider Selection
