@@ -41,7 +41,7 @@ func (ei EmitInput) Append(c Container) EmitInput {
 	}
 }
 
-func EmitContainer(in EmitInput) ([]byte, error) {
+func EmitContainers(in EmitInput) ([]byte, error) {
 	if in.PackageName == "" {
 		return nil, fmt.Errorf("gen: PackageName is required")
 	}
