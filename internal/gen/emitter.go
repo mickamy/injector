@@ -129,10 +129,10 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 		returnType = fmt.Sprintf("*%s", returnType)
 	}
 
-	if must {
-		prints.Fprintf(buf, "func %s() %s {\n", funcName, returnType)
-	} else {
+	if returnErr {
 		prints.Fprintf(buf, "func %s() (%s, error) {\n", funcName, returnType)
+	} else {
+		prints.Fprintf(buf, "func %s() %s {\n", funcName, returnType)
 	}
 
 	for _, p := range c.Providers {
@@ -177,7 +177,11 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 		varByType[resKey] = vname
 	}
 
-	buf.WriteString("\n\treturn &")
+	if hasPointer {
+		buf.WriteString("\n\treturn &")
+	} else {
+		buf.WriteString("\n\treturn ")
+	}
 	buf.WriteString(c.Name)
 	buf.WriteString("{\n")
 
