@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mickamy/injector/internal/config"
 	"github.com/mickamy/injector/internal/prints"
 	"github.com/mickamy/injector/internal/resolve"
 )
@@ -31,6 +32,7 @@ type Container struct {
 type EmitInput struct {
 	// PackageName is the target package name where the container lives.
 	PackageName string
+	OnError     *config.OnError
 	Containers  []Container
 }
 
@@ -55,8 +57,9 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 	}
 
 	aliases := make(map[string]string)
+	importLog := in.OnError != nil && in.OnError.String() == config.OnErrorFatal.String()
 	for _, c := range in.Containers {
-		err := buildImportAliases(aliases, c.PkgPath, c.Providers)
+		err := buildImportAliases(aliases, c.PkgPath, c.Providers, importLog)
 		if err != nil {
 			return nil, fmt.Errorf("gen: failed to build import aliases: %v", err)
 		}
@@ -67,8 +70,11 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 	prints.Fprintf(&buf, "package %s\n\n", in.PackageName)
 
 	imports := sortedImports(aliases)
-	if len(imports) > 0 {
+	if len(imports) > 0 || importLog {
 		buf.WriteString("import (\n")
+		if importLog {
+			prints.Fprintf(&buf, "\t%q\n\n", "log")
+		}
 		for _, imp := range imports {
 			prints.Fprintf(&buf, "\t%s %q\n", aliases[imp], imp)
 		}
@@ -76,95 +82,13 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 	}
 
 	for _, c := range in.Containers {
-		// Build local variable plan: typeKey -> varName
-		varByType := map[string]string{}
-
-		returnErr := slices.ContainsFunc(c.Providers, func(provider *resolve.Provider) bool {
-			return provider.ReturnError
-		})
-
-		prints.Fprintf(&buf, "// %s initializes dependencies and constructs %s.\n", c.FuncName, c.Name)
-
-		returnType := c.Name
-		var hasPointer bool
-		for _, field := range c.Fields {
-			if isPointer(field.Type) {
-				hasPointer = true
-				break
-			}
+		if err := writeNewFunc(&buf, c, aliases, nil); err != nil {
+			return nil, fmt.Errorf("gen: failed to write: %v", err)
 		}
-		if hasPointer {
-			returnType = fmt.Sprintf("*%s", returnType)
-		}
-
-		if returnErr {
-			prints.Fprintf(&buf, "func %s() (%s, error) {\n", c.FuncName, returnType)
-		} else {
-			prints.Fprintf(&buf, "func %s() %s {\n", c.FuncName, returnType)
-		}
-
-		for _, p := range c.Providers {
-			if p == nil {
-				continue
+		if in.OnError != nil {
+			if err := writeNewFunc(&buf, c, aliases, in.OnError); err != nil {
+				return nil, fmt.Errorf("gen: failed to write must: %v", err)
 			}
-
-			call := providerCallExpr(c.PkgPath, aliases, p)
-
-			var args []string
-			for _, pt := range p.Params {
-				key := typeKey(pt)
-				v, ok := varByType[key]
-				if !ok {
-					return nil, fmt.Errorf(
-						"gen: missing resolved value for param %s (required by %s)",
-						typeString(pt),
-						providerString(p),
-					)
-				}
-				args = append(args, v)
-			}
-
-			resKey := typeKey(p.ResultType)
-			vname, err := varNameForResult(p.Name, varByType)
-			if err != nil {
-				return nil, fmt.Errorf("gen: %w", err)
-			}
-
-			if p.ReturnError {
-				prints.Fprintf(&buf, "\t%s, err := %s(%s)\n", vname, call, strings.Join(args, ", "))
-				prints.Fprint(&buf, "\tif err != nil {\n")
-				prints.Fprint(&buf, "\t\treturn nil, err\n")
-				prints.Fprint(&buf, "\t}\n")
-			} else {
-				prints.Fprintf(&buf, "\t%s := %s(%s)\n", vname, call, strings.Join(args, ", "))
-			}
-			varByType[resKey] = vname
-		}
-
-		buf.WriteString("\n\treturn &")
-		buf.WriteString(c.Name)
-		buf.WriteString("{\n")
-
-		for _, f := range c.Fields {
-			if f.Name == "_" {
-				continue
-			}
-
-			key := typeKey(f.Type)
-			v, ok := varByType[key]
-			if !ok {
-				return nil, fmt.Errorf("gen: missing resolved value for field %s (%s)", f.Name, typeString(f.Type))
-			}
-
-			prints.Fprintf(&buf, "\t\t%s: %s,\n", f.Name, v)
-		}
-
-		if returnErr {
-			buf.WriteString("\t}, nil\n")
-			buf.WriteString("}\n")
-		} else {
-			buf.WriteString("\t}\n")
-			buf.WriteString("}\n")
 		}
 	}
 
@@ -175,10 +99,120 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 	return src, nil
 }
 
-func buildImportAliases(aliases map[string]string, containerPkgPath string, providers []*resolve.Provider) error {
+func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onError *config.OnError) error {
+	// Build local variable plan: typeKey -> varName
+	varByType := map[string]string{}
+
+	returnErr := slices.ContainsFunc(c.Providers, func(provider *resolve.Provider) bool {
+		return provider.ReturnError
+	}) && onError == nil
+
+	must := onError != nil
+
+	funcName := c.FuncName
+	doc := fmt.Sprintf("%s initializes dependencies and constructs %s.", funcName, c.Name)
+	if must {
+		funcName = fmt.Sprintf("Must%s", funcName)
+		doc = fmt.Sprintf("%s initializes dependencies and constructs %s or %s on failure.", funcName, c.Name, onError.Behavior())
+	}
+	prints.Fprintf(buf, "// %s\n", doc)
+
+	returnType := c.Name
+	var hasPointer bool
+	for _, field := range c.Fields {
+		if isPointer(field.Type) {
+			hasPointer = true
+			break
+		}
+	}
+	if hasPointer {
+		returnType = fmt.Sprintf("*%s", returnType)
+	}
+
+	if must {
+		prints.Fprintf(buf, "func %s() %s {\n", funcName, returnType)
+	} else {
+		prints.Fprintf(buf, "func %s() (%s, error) {\n", funcName, returnType)
+	}
+
+	for _, p := range c.Providers {
+		if p == nil {
+			continue
+		}
+
+		call := providerCallExpr(c.PkgPath, aliases, p)
+
+		var args []string
+		for _, pt := range p.Params {
+			key := typeKey(pt)
+			v, ok := varByType[key]
+			if !ok {
+				return fmt.Errorf(
+					"missing resolved value for param %s (required by %s)",
+					typeString(pt),
+					providerString(p),
+				)
+			}
+			args = append(args, v)
+		}
+
+		resKey := typeKey(p.ResultType)
+		vname, err := varNameForResult(p.Name, varByType)
+		if err != nil {
+			return err
+		}
+
+		if p.ReturnError {
+			prints.Fprintf(buf, "\t%s, err := %s(%s)\n", vname, call, strings.Join(args, ", "))
+			prints.Fprint(buf, "\tif err != nil {\n")
+			if must {
+				prints.Fprintf(buf, "\t\t%s(err)\n", onError.Func())
+			} else {
+				prints.Fprint(buf, "\t\treturn nil, err\n")
+			}
+			prints.Fprint(buf, "\t}\n")
+		} else {
+			prints.Fprintf(buf, "\t%s := %s(%s)\n", vname, call, strings.Join(args, ", "))
+		}
+		varByType[resKey] = vname
+	}
+
+	buf.WriteString("\n\treturn &")
+	buf.WriteString(c.Name)
+	buf.WriteString("{\n")
+
+	for _, f := range c.Fields {
+		if f.Name == "_" {
+			continue
+		}
+
+		key := typeKey(f.Type)
+		v, ok := varByType[key]
+		if !ok {
+			return fmt.Errorf("gen: missing resolved value for field %s (%s)", f.Name, typeString(f.Type))
+		}
+
+		prints.Fprintf(buf, "\t\t%s: %s,\n", f.Name, v)
+	}
+
+	if returnErr {
+		buf.WriteString("\t}, nil\n")
+		buf.WriteString("}\n")
+	} else {
+		buf.WriteString("\t}\n")
+		buf.WriteString("}\n")
+	}
+
+	return nil
+}
+
+func buildImportAliases(aliases map[string]string, containerPkgPath string, providers []*resolve.Provider, importLog bool) error {
 	used := make(map[string]struct{})
 	for _, a := range aliases {
 		used[a] = struct{}{}
+	}
+	if importLog {
+		used["log"] = struct{}{}
 	}
 
 	for _, p := range providers {
