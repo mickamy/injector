@@ -65,6 +65,46 @@ func NewDatabase(cfg config.Database) (*Database, error) {
 
 ---
 
+## Must Mode
+
+By default, injector generates constructors that return `(*Container, error)` so the caller can handle initialization failures.
+
+For application entrypoints where initialization failures should immediately stop the process, you can enable **Must mode**:
+
+```bash
+injector generate --must ./...
+```
+
+Must mode generates an additional `MustNew*` constructor for each container.
+
+### Default behavior: panic
+
+If a provider returns an error, `MustNew*` will **panic** by default (following the common Go convention used by functions like `regexp.MustCompile`).
+
+```go
+func MustNewContainer() *Container {
+	c, err := NewContainer()
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+```
+
+### Optional: log.Fatal
+
+If you prefer exiting with a log message instead of panicking, choose the strategy explicitly:
+
+```bash
+injector generate --must --on-error=fatal ./...
+```
+
+This changes the generated `MustNew*` function to use `log.Fatal` on error.
+
+> Note: `--on-error` is only valid when used with `--must`.
+
+---
+
 ## Why a Marker Tag?
 
 The marker-only `inject` tag serves several important purposes:
@@ -146,6 +186,54 @@ func NewContainer() (*Container, error) {
 	}, nil
 }
 ```
+
+### Container Return Type
+
+injector determines the return type of the generated constructor based on the **fields of the Container**.
+
+* If the Container has **any pointer-typed field** (e.g. `*Service`, `*Repository`), the generated `New*` function returns a **pointer to the Container**.
+* If **all fields are value types**, the generated `New*` function returns the Container **by value**.
+
+This rule ensures that Containers which hold reference-like components behave consistently and avoid accidental copying.
+
+Examples:
+
+```go
+type Container struct {
+	Service *service.UserService `inject:""`
+}
+```
+
+Generated code:
+
+```go
+func NewContainer() (*Container, error) {
+	// ...
+	return &Container{Service: srv}, nil
+}
+```
+
+If all fields are values:
+
+```go
+type Container struct {
+	Service service.UserService `inject:""`
+}
+```
+
+Generated code:
+
+```go
+func NewContainer() (Container, error) {
+	// ...
+	return Container{Service: srv}, nil
+}
+```
+
+This behavior aligns with common Go conventions:
+
+* Containers that hold pointers represent long-lived, shared objects.
+* Pure value Containers remain lightweight and copyable.
 
 ---
 
