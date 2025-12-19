@@ -97,7 +97,7 @@ func (a *App) runGenerate(args []string) int {
 	}
 
 	var failed bool
-	generatedFiles := make(map[string]struct{})
+	emitInputs := make(map[string]gen.EmitInput)
 	for _, c := range containers {
 		fields, err := resolve.ConvertContainerFields(c)
 		if err != nil {
@@ -136,29 +136,42 @@ func (a *App) runGenerate(args []string) int {
 			continue
 		}
 
-		// Output directory: use the directory of the container's file path.
-		// We already have c.Position as "file:line:col", so derive the file part.
-		outDir := filepath.Dir(positionFile(c.Position))
+		outDir := filepath.Dir(positionToFile(c.Position))
 		outPath := filepath.Join(outDir, outFile)
-		emitInput := gen.EmitInput{
-			PackageName:      c.PkgName,
-			ContainerName:    c.Name,
-			Fields:           fields,
-			Providers:        ordered,
-			ContainerPkgPath: c.PkgPath,
-			FuncName:         "New" + c.Name,
+		if _, ok := emitInputs[outPath]; ok {
+			emitInputs[outPath] = emitInputs[outPath].Append(gen.Container{
+				Name:      c.Name,
+				Fields:    fields,
+				Providers: ordered,
+				PkgPath:   c.PkgPath,
+				FuncName:  "New" + c.Name,
+			})
+		} else {
+			emitInputs[outPath] = gen.EmitInput{
+				PackageName: c.PkgName,
+				Containers: []gen.Container{{
+					Name:      c.Name,
+					Fields:    fields,
+					Providers: ordered,
+					PkgPath:   c.PkgPath,
+					FuncName:  "New" + c.Name,
+				}},
+			}
 		}
+	}
+
+	generatedFiles := make(map[string]struct{})
+	for outPath, inputs := range emitInputs {
 		if _, ok := generatedFiles[outPath]; !ok {
 			if err := os.Remove(outPath); err != nil && !os.IsNotExist(err) {
 				prints.Fprintln(a.err, err.Error())
 				failed = true
 				continue
 			}
-			emitInput.IncludeHeader = true
 			generatedFiles[outPath] = struct{}{}
 		}
 
-		bytes, err := gen.EmitContainer(emitInput)
+		bytes, err := gen.EmitContainer(inputs)
 		if err != nil {
 			prints.Fprintln(a.err, err.Error())
 			failed = true
@@ -171,9 +184,6 @@ func (a *App) runGenerate(args []string) int {
 			continue
 		}
 
-		if flags.Verbose {
-			prints.Fprintf(a.out, "resolve: ok (%s.%s)\n", c.PkgPath, c.Name)
-		}
 		prints.Fprintln(a.out, "generate:", outPath)
 	}
 
@@ -270,7 +280,7 @@ func splitTags(s string) []string {
 	return out
 }
 
-func positionFile(pos string) string {
+func positionToFile(pos string) string {
 	// pos format: "/path/to/file.go:line:col"
 	// We split from the right to keep Windows drive letters safe-ish.
 	i := strings.LastIndexByte(pos, ':')
