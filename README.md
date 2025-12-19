@@ -153,6 +153,101 @@ func NewUser(db infra.Database) (User, error) {
 
 ---
 
+## How injector compares to other DI approaches
+
+injector explores a different point in the Go DI design space.
+It is not intended to replace all existing solutions, but to offer a simpler option under specific assumptions.
+
+A key goal of injector is to **minimize the amount of DI-specific code that humans need to write and maintain**.
+In many applications, this results in dramatically fewer lines of code compared to other approaches.
+
+---
+
+### wire
+
+**wire** is a compile-time DI tool that requires explicit provider sets and build functions.
+
+```go
+var userSet = wire.NewSet(NewConfig, NewDatabase, NewUserService)
+
+func Initialize() (*Handler, error) {
+    wire.Build(userSet)
+    return nil, nil
+}
+```
+
+* Explicit provider registration via `wire.NewSet`
+* Clear and reviewable dependency graphs
+* Additional DI-specific code to maintain
+
+**injector differs by:**
+
+* Eliminating provider sets and build functions
+* Using the container struct itself as the declaration of required dependencies
+* Reducing the amount of human-maintained DI code
+
+injector is a good fit when dependency graphs are mostly type-driven and stable at startup.
+
+---
+
+### fx / dig
+
+**fx** and **dig** provide powerful runtime dependency injection containers.
+
+* Dependencies are resolved at runtime
+* Modules, lifecycle hooks, and dynamic wiring are supported
+* Suitable for large or highly dynamic applications
+
+**injector differs by:**
+
+* Having no runtime container
+* Performing all resolution at generate time
+* Emitting plain Go constructors instead of managing a runtime graph
+
+injector intentionally trades runtime flexibility for simplicity and transparency.
+
+---
+
+### samber/do
+
+**samber/do** is a lightweight runtime DI container using Go generics.
+
+```go
+do.Provide(i, func(i *do.Injector) (*Service, error) { ... })
+svc := do.MustInvoke[*Service](i)
+```
+
+* Explicit registration via `Provide`
+* Runtime resolution and overrides
+* Simple API with type-safe retrieval
+
+**injector differs by:**
+
+* Requiring no registration or injector object
+* Treating providers as ordinary functions
+* Making the dependency graph visible as generated code
+
+injector is designed for applications where dependencies are fixed at startup and do not change at runtime.
+
+---
+
+### Summary
+
+| Tool      | Resolution Time  | Registration | Runtime Container |
+|-----------|------------------|--------------|-------------------|
+| wire      | Generate-time    | Required     | No                |
+| fx / dig  | Runtime          | Required     | Yes               |
+| samber/do | Runtime          | Required     | Yes               |
+| injector  | Generate-time    | Not required | No                |
+
+injector works best when:
+
+* The dependency graph is static at startup
+* Simplicity and readability are preferred over flexibility
+* DI boilerplate should be minimized
+
+---
+
 ## Full Example
 
 See the full example in the `example` directory.
