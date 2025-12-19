@@ -61,12 +61,12 @@ func resolveField(
 			return nil, err
 		}
 		for _, provider := range ps {
-			if provider.ResultType == f.Type {
+			if types.Identical(provider.ResultType, f.Type) {
 				p = provider
 			}
 		}
 		if p == nil {
-			return nil, fmt.Errorf("failed to resolve provider %s", f.Inject.Provider)
+			return nil, fmt.Errorf("failed to resolve provider %s on resolve field", f.Inject.Provider)
 		}
 	} else if o, ok := overrides[typeKey(f.Type)]; ok {
 		p = o
@@ -162,12 +162,12 @@ func collectOverrides(fields []ContainerField, byName map[string]*Provider) (map
 		}
 		var p *Provider
 		for _, provider := range ps {
-			if provider.ResultType == f.Type {
+			if types.Identical(provider.ResultType, f.Type) {
 				p = provider
 			}
 		}
 		if p == nil {
-			return nil, fmt.Errorf("failed to resolve provider %s", f.Inject.Provider)
+			return nil, fmt.Errorf("failed to resolve provider %s on collect overrides", f.Inject.Provider)
 		}
 		out[typeKey(f.Type)] = p
 	}
