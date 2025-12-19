@@ -9,8 +9,8 @@ func OrderProviders(g *Graph) ([]*Provider, error) {
 		return nil, fmt.Errorf("resolve: graph is nil")
 	}
 
-	visited := map[*Provider]bool{}
-	onstack := map[*Provider]bool{}
+	visited := map[*Provider]struct{}{}
+	onstack := map[*Provider]struct{}{}
 	var out []*Provider
 
 	var visit func(n *Node) error
@@ -20,14 +20,14 @@ func OrderProviders(g *Graph) ([]*Provider, error) {
 		}
 
 		p := n.Provider
-		if onstack[p] {
+		if _, ok := onstack[p]; ok {
 			return fmt.Errorf("resolve: circular dependency detected at %s", providerString(p))
 		}
-		if visited[p] {
+		if _, ok := visited[p]; ok {
 			return nil
 		}
 
-		onstack[p] = true
+		onstack[p] = struct{}{}
 		for _, d := range n.Deps {
 			if err := visit(d); err != nil {
 				return err
@@ -35,7 +35,7 @@ func OrderProviders(g *Graph) ([]*Provider, error) {
 		}
 		delete(onstack, p)
 
-		visited[p] = true
+		visited[p] = struct{}{}
 		out = append(out, p)
 		return nil
 	}
