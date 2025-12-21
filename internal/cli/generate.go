@@ -253,6 +253,10 @@ func parseGenerateFlags(args []string) (generateFlags, []string, error) {
 		gf.OnError = &onError
 	}
 
+	if gf.Must && gf.OnError == nil {
+		gf.OnError = &config.OnErrorPanic
+	}
+
 	return gf, fs.Args(), nil
 }
 
