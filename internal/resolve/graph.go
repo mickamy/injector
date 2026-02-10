@@ -76,7 +76,7 @@ func resolveField(
 			return nil, fmt.Errorf("no provider for %s", typeString(f.Type))
 		}
 		if len(candidates) > 1 {
-			return nil, fmt.Errorf("multiple providers for %s", typeString(f.Type))
+			return nil, fmt.Errorf("multiple providers for %s:\n%s", typeString(f.Type), formatProviders(candidates))
 		}
 		p = candidates[0]
 	}
@@ -129,7 +129,7 @@ func resolveProvider(
 				return nil, fmt.Errorf("no provider for %s (required by %s)", typeString(t), providerString(p))
 			}
 			if len(cands) > 1 {
-				return nil, fmt.Errorf("multiple providers for %s (required by %s)", typeString(t), providerString(p))
+				return nil, fmt.Errorf("multiple providers for %s (required by %s):\n%s", typeString(t), providerString(p), formatProviders(cands))
 			}
 			dp = cands[0]
 		}
@@ -245,6 +245,18 @@ func typeString(t types.Type) string {
 		// Use full path to reduce ambiguity in errors.
 		return p.Path()
 	})
+}
+
+func formatProviders(ps []*Provider) string {
+	var b strings.Builder
+	for _, p := range ps {
+		fmt.Fprintf(&b, "  - %s", providerString(p))
+		if p.Position != "" {
+			fmt.Fprintf(&b, " (%s)", p.Position)
+		}
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func providerString(p *Provider) string {
