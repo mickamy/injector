@@ -181,7 +181,7 @@ func (a *App) runGenerate(args []string) int {
 				Fields:    fields,
 				Providers: ordered,
 				PkgPath:   c.PkgPath,
-				FuncName:  "New" + c.Name,
+				FuncName:  "",
 			})
 		} else {
 			emitInputs[outPath] = gen.EmitInput{
@@ -192,7 +192,7 @@ func (a *App) runGenerate(args []string) int {
 					Fields:    fields,
 					Providers: ordered,
 					PkgPath:   c.PkgPath,
-					FuncName:  "New" + c.Name,
+					FuncName:  "",
 				}},
 			}
 		}

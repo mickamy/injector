@@ -48,12 +48,12 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 	if in.PackageName == "" {
 		return nil, fmt.Errorf("gen: PackageName is required")
 	}
-	for _, c := range in.Containers {
-		if c.Name == "" {
+	for i := range in.Containers {
+		if in.Containers[i].Name == "" {
 			return nil, fmt.Errorf("gen: Container.Name is required")
 		}
-		if c.FuncName == "" {
-			c.FuncName = "New" + upperFirst(c.Name)
+		if in.Containers[i].FuncName == "" {
+			in.Containers[i].FuncName = "New" + upperFirst(in.Containers[i].Name)
 		}
 	}
 
