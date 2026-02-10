@@ -26,7 +26,7 @@ func (r *repository) Create(user User) error {
 
 func (r *repository) Get(userID string) (User, error) {
 	if r.database == nil {
-		errors.New("database is not initialized")
+		return User{}, errors.New("database is not initialized")
 	}
 	return User{
 		ID:       userID,
