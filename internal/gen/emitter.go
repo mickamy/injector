@@ -109,6 +109,10 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onError *config.OnError) error {
 	// Build local variable plan: typeKey -> varName
 	varByType := map[string]string{}
+	// varByProvider maps provider NameWithPkg -> varName for fields
+	// with explicit provider directives (needed when multiple providers
+	// return the same type).
+	varByProvider := map[string]string{}
 
 	returnErr := slices.ContainsFunc(c.Providers, func(provider *resolve.Provider) bool {
 		return provider.ReturnError && !provider.IsParam
@@ -128,6 +132,7 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 		}
 		resKey := typeKey(p.ResultType)
 		varByType[resKey] = vname
+		varByProvider[p.NameWithPkg] = vname
 		typeExpr := qualifiedTypeString(p.ResultType, c.PkgPath, aliases)
 		paramExprs = append(paramExprs, vname+" "+typeExpr)
 	}
@@ -170,7 +175,9 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 				)
 			}
 			resKey := typeKey(p.ResultType)
-			varByType[resKey] = parentVar + "." + p.FieldAccess
+			expr := parentVar + "." + p.FieldAccess
+			varByType[resKey] = expr
+			varByProvider[p.NameWithPkg] = expr
 			continue
 		}
 
@@ -209,6 +216,7 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 			prints.Fprintf(buf, "\t%s := %s(%s)\n", vname, call, strings.Join(args, ", "))
 		}
 		varByType[resKey] = vname
+		varByProvider[p.NameWithPkg] = vname
 	}
 
 	buf.WriteString("\n\treturn &")
@@ -220,10 +228,20 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 			continue
 		}
 
-		key := typeKey(f.Type)
-		v, ok := varByType[key]
-		if !ok {
-			return fmt.Errorf("gen: missing resolved value for field %s (%s)", f.Name, typeString(f.Type))
+		var v string
+		if f.Inject.Provider != "" {
+			var ok bool
+			v, ok = lookupVarByDirective(varByProvider, f.Inject.Provider)
+			if !ok {
+				return fmt.Errorf("gen: missing resolved value for field %s (provider %s)", f.Name, f.Inject.Provider)
+			}
+		} else {
+			key := typeKey(f.Type)
+			var ok bool
+			v, ok = varByType[key]
+			if !ok {
+				return fmt.Errorf("gen: missing resolved value for field %s (%s)", f.Name, typeString(f.Type))
+			}
 		}
 
 		prints.Fprintf(buf, "\t\t%s: %s,\n", f.Name, v)
@@ -425,6 +443,25 @@ func qualifiedTypeString(t types.Type, containerPkgPath string, aliases map[stri
 		return alias + "." + obj.Name()
 	}
 	return types.TypeString(t, nil)
+}
+
+// lookupVarByDirective finds a variable in varByProvider using the same
+// suffix-matching logic as the resolver's lookupProviderByDirective.
+// directive is a short form like "di.provideWriterDB", while keys are
+// full paths like "github.com/.../di.provideWriterDB".
+func lookupVarByDirective(varByProvider map[string]string, directive string) (string, bool) {
+	// Exact match first.
+	if v, ok := varByProvider[directive]; ok {
+		return v, true
+	}
+	// Suffix match: directive "di.provideWriterDB" matches
+	// key ending with "/di.provideWriterDB" or ".di.provideWriterDB".
+	for k, v := range varByProvider {
+		if strings.HasSuffix(k, "."+directive) || strings.HasSuffix(k, "/"+directive) {
+			return v, true
+		}
+	}
+	return "", false
 }
 
 func isPointer(t types.Type) bool {
