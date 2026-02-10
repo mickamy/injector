@@ -105,10 +105,27 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 	varByType := map[string]string{}
 
 	returnErr := slices.ContainsFunc(c.Providers, func(provider *resolve.Provider) bool {
-		return provider.ReturnError
+		return provider.ReturnError && !provider.IsParam
 	}) && onError == nil
 
 	must := onError != nil
+
+	// Collect param providers and pre-populate varByType.
+	var paramExprs []string
+	for _, p := range c.Providers {
+		if p == nil || !p.IsParam {
+			continue
+		}
+		vname, err := varNameForResult(p.Name, varByType)
+		if err != nil {
+			return err
+		}
+		resKey := typeKey(p.ResultType)
+		varByType[resKey] = vname
+		typeExpr := qualifiedTypeString(p.ResultType, c.PkgPath, aliases)
+		paramExprs = append(paramExprs, vname+" "+typeExpr)
+	}
+	paramStr := strings.Join(paramExprs, ", ")
 
 	funcName := c.FuncName
 	doc := fmt.Sprintf("%s initializes dependencies and constructs %s.", funcName, c.Name)
@@ -119,13 +136,13 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 	prints.Fprintf(buf, "// %s\n", doc)
 
 	if returnErr {
-		prints.Fprintf(buf, "func %s() (*%s, error) {\n", funcName, c.Name)
+		prints.Fprintf(buf, "func %s(%s) (*%s, error) {\n", funcName, paramStr, c.Name)
 	} else {
-		prints.Fprintf(buf, "func %s() *%s {\n", funcName, c.Name)
+		prints.Fprintf(buf, "func %s(%s) *%s {\n", funcName, paramStr, c.Name)
 	}
 
 	for _, p := range c.Providers {
-		if p == nil {
+		if p == nil || p.IsParam {
 			continue
 		}
 
@@ -347,6 +364,24 @@ func providerString(p *resolve.Provider) string {
 		return p.Name
 	}
 	return p.PkgPath + "." + p.Name
+}
+
+func qualifiedTypeString(t types.Type, containerPkgPath string, aliases map[string]string) string {
+	if ptr, ok := t.(*types.Pointer); ok {
+		return "*" + qualifiedTypeString(ptr.Elem(), containerPkgPath, aliases)
+	}
+	if named, ok := t.(*types.Named); ok {
+		obj := named.Obj()
+		if obj.Pkg() == nil || obj.Pkg().Path() == containerPkgPath {
+			return obj.Name()
+		}
+		alias := aliases[obj.Pkg().Path()]
+		if alias == "" {
+			alias = path.Base(obj.Pkg().Path())
+		}
+		return alias + "." + obj.Name()
+	}
+	return types.TypeString(t, nil)
 }
 
 func isPointer(t types.Type) bool {

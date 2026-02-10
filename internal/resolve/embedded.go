@@ -132,14 +132,14 @@ func CreateSyntheticProviders(refs []EmbeddedContainerRef) []*Provider {
 	for _, ref := range refs {
 		ptrType := types.NewPointer(ref.Type)
 
-		// Constructor provider.
+		// Parameter provider: the embedded container is passed as
+		// a function argument rather than constructed internally.
 		out = append(out, &Provider{
 			PkgPath:     ref.ContainerPkgPath,
-			Name:        ref.FuncName,
-			NameWithPkg: ref.ContainerPkgPath + "." + ref.FuncName,
+			Name:        ref.ContainerName,
+			NameWithPkg: ref.ContainerPkgPath + "." + ref.ContainerName,
 			ResultType:  ptrType,
-			ReturnError: ref.ReturnError,
-			Params:      nil,
+			IsParam:     true,
 		})
 
 		// Field-access providers.

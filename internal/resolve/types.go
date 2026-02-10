@@ -37,6 +37,11 @@ type Provider struct {
 	// Instead of generating a function call, the emitter produces
 	// parentVar.FieldName.
 	FieldAccess string
+
+	// IsParam indicates this is a synthetic parameter provider.
+	// Instead of generating a function call, the emitter adds this
+	// type as a function parameter.
+	IsParam bool
 }
 
 // ContainerField represents an injectable field in a Container struct.
