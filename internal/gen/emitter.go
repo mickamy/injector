@@ -52,7 +52,7 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 			return nil, fmt.Errorf("gen: Container.Name is required")
 		}
 		if c.FuncName == "" {
-			c.FuncName = "New" + c.Name
+			c.FuncName = "New" + upperFirst(c.Name)
 		}
 	}
 
@@ -287,6 +287,13 @@ func varNameForResult(providerName string, existing map[string]string) (string, 
 			return try, nil
 		}
 	}
+}
+
+func upperFirst(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func lowerFirst(s string) string {
