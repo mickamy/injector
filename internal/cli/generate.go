@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,9 +102,22 @@ func (a *App) runGenerate(args []string) int {
 		return 1
 	}
 
+	// Build container registry for embedded container detection.
+	containerRegistry := make(map[string]scan.ContainerSpec)
+	for _, c := range containers {
+		key := c.PkgPath + "." + c.Name
+		containerRegistry[key] = c
+	}
+
+	// Topologically sort containers so embedded containers are processed first.
+	sortedContainers := topoSortContainers(containers, containerRegistry)
+
+	// Track which containers return error from their generated constructor.
+	processedResults := make(map[string]bool)
+
 	var failed bool
 	emitInputs := make(map[string]gen.EmitInput)
-	for _, c := range containers {
+	for _, c := range sortedContainers {
 		fields, err := resolve.ConvertContainerFields(c)
 		if err != nil {
 			prints.Fprintln(a.err, err.Error())
@@ -116,7 +130,14 @@ func (a *App) runGenerate(args []string) int {
 			continue
 		}
 
-		g, err := resolve.BuildGraph(fields, rproviders)
+		// Detect embedded containers and create synthetic providers.
+		embeddedRefs := resolve.DetectEmbeddedContainers(c.Fields, containerRegistry, processedResults)
+		syntheticProviders := resolve.CreateSyntheticProviders(embeddedRefs)
+
+		// Field-access providers override regular providers for the same type.
+		allProviders := resolve.MergeProviders(rproviders, syntheticProviders)
+
+		g, err := resolve.BuildGraph(fields, allProviders)
 		if err != nil {
 			prints.Fprintln(a.err, fmt.Sprintf("failed to build graph for container %s.%s: %v", c.PkgPath, c.Name, err))
 			failed = true
@@ -140,6 +161,17 @@ func (a *App) runGenerate(args []string) int {
 			failed = true
 			continue
 		}
+
+		// Track whether this container's constructor returns error.
+		key := c.PkgPath + "." + c.Name
+		returnsErr := false
+		for _, p := range ordered {
+			if p.ReturnError {
+				returnsErr = true
+				break
+			}
+		}
+		processedResults[key] = returnsErr
 
 		outDir := filepath.Dir(positionToFile(c.Position))
 		outPath := filepath.Join(outDir, outFile)
@@ -299,6 +331,70 @@ func splitTags(s string) []string {
 			continue
 		}
 		out = append(out, p)
+	}
+	return out
+}
+
+// topoSortContainers sorts containers so that embedded (referenced) containers
+// appear before containers that embed them.
+func topoSortContainers(containers []scan.ContainerSpec, registry map[string]scan.ContainerSpec) []scan.ContainerSpec {
+	keyOf := func(c scan.ContainerSpec) string {
+		return c.PkgPath + "." + c.Name
+	}
+
+	// Build adjacency: container → set of containers it embeds.
+	deps := make(map[string][]string)
+	for _, c := range containers {
+		k := keyOf(c)
+		for _, f := range c.Fields {
+			if !f.IsEmbeddedCandidate || f.Type == nil {
+				continue
+			}
+			t := f.Type
+			if ptr, ok := t.(*types.Pointer); ok {
+				t = ptr.Elem()
+			}
+			named, ok := t.(*types.Named)
+			if !ok {
+				continue
+			}
+			obj := named.Obj()
+			if obj == nil || obj.Pkg() == nil {
+				continue
+			}
+			refKey := obj.Pkg().Path() + "." + obj.Name()
+			if _, ok := registry[refKey]; ok {
+				deps[k] = append(deps[k], refKey)
+			}
+		}
+	}
+
+	visited := make(map[string]bool)
+	var order []string
+	var visit func(key string)
+	visit = func(key string) {
+		if visited[key] {
+			return
+		}
+		visited[key] = true
+		for _, d := range deps[key] {
+			visit(d)
+		}
+		order = append(order, key)
+	}
+	for _, c := range containers {
+		visit(keyOf(c))
+	}
+
+	byKey := make(map[string]scan.ContainerSpec)
+	for _, c := range containers {
+		byKey[keyOf(c)] = c
+	}
+	out := make([]scan.ContainerSpec, 0, len(order))
+	for _, k := range order {
+		if c, ok := byKey[k]; ok {
+			out = append(out, c)
+		}
 	}
 	return out
 }

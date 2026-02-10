@@ -129,6 +129,23 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 			continue
 		}
 
+		// Field-access providers don't generate assignment lines.
+		// They register a dot-expression (e.g. "infra.KVS") in varByType.
+		if p.FieldAccess != "" {
+			parentKey := typeKey(p.Params[0])
+			parentVar, ok := varByType[parentKey]
+			if !ok {
+				return fmt.Errorf(
+					"missing resolved value for param %s (required by field access %s)",
+					typeString(p.Params[0]),
+					p.FieldAccess,
+				)
+			}
+			resKey := typeKey(p.ResultType)
+			varByType[resKey] = parentVar + "." + p.FieldAccess
+			continue
+		}
+
 		call := providerCallExpr(c.PkgPath, aliases, p)
 
 		var args []string

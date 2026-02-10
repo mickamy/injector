@@ -1,0 +1,13 @@
+package infra
+
+import (
+	"github.com/mickamy/injector/example/embedded-error/config"
+)
+
+type Database struct {
+	cfg config.DatabaseConfig
+}
+
+func NewDatabase(cfg config.DatabaseConfig) (*Database, error) {
+	return &Database{cfg: cfg}, nil
+}

@@ -31,6 +31,12 @@ type Provider struct {
 	ReturnError bool
 	Params      []types.Type
 	Position    string
+
+	// FieldAccess, when non-empty, indicates this is a synthetic
+	// field-access provider. The value is the field name (e.g. "KVS").
+	// Instead of generating a function call, the emitter produces
+	// parentVar.FieldName.
+	FieldAccess string
 }
 
 // ContainerField represents an injectable field in a Container struct.

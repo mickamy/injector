@@ -32,6 +32,10 @@ type ContainerField struct {
 	InjectRaw string
 	Inject    InjectTag
 
+	// IsEmbeddedCandidate is true for "_" fields without an inject tag
+	// that reference another container type (embedded container).
+	IsEmbeddedCandidate bool
+
 	Position string
 }
 
@@ -179,6 +183,49 @@ func collectContainerFields(pkg *packages.Package, fl *ast.FieldList) ([]Contain
 				InjectRaw: injectRaw,
 				Inject:    parsed,
 				Position:  position(pkg.Fset, f.Pos()),
+			})
+		}
+	}
+
+	// Second pass: collect "_" fields without inject tag as embedded candidates.
+	if len(out) > 0 {
+		for _, f := range fl.List {
+			if f == nil || f.Type == nil {
+				continue
+			}
+
+			// Only consider fields where all names are "_".
+			if len(f.Names) == 0 {
+				continue
+			}
+			allBlank := true
+			for _, name := range f.Names {
+				if name == nil || name.Name != "_" {
+					allBlank = false
+					break
+				}
+			}
+			if !allBlank {
+				continue
+			}
+
+			tagRaw, _ := parseStructTag(f.Tag)
+			if hasInjectKey(tagRaw) {
+				continue // already collected in the first pass
+			}
+
+			typeExpr := types.ExprString(f.Type)
+			typ := types.Type(nil)
+			if pkg.TypesInfo != nil {
+				typ = pkg.TypesInfo.TypeOf(f.Type)
+			}
+
+			out = append(out, ContainerField{
+				Name:                "_",
+				TypeExpr:            typeExpr,
+				Type:                typ,
+				IsEmbeddedCandidate: true,
+				Position:            position(pkg.Fset, f.Pos()),
 			})
 		}
 	}
