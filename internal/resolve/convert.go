@@ -29,6 +29,10 @@ func ConvertContainerFields(c scan.ContainerSpec) ([]ContainerField, error) {
 		if f.IsEmbeddedCandidate {
 			continue
 		}
+		// Returns fields define the return type, not an injectable field.
+		if f.IsReturns {
+			continue
+		}
 		// Blank field: override only, include only if marked.
 		if f.Name == "_" {
 			if !isMarkedField(f) {

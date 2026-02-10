@@ -36,6 +36,10 @@ type ContainerField struct {
 	// that reference another container type (embedded container).
 	IsEmbeddedCandidate bool
 
+	// IsReturns is true for fields tagged with `inject:"returns"`.
+	// The field's type is used as the constructor's return type.
+	IsReturns bool
+
 	Position string
 }
 
@@ -167,6 +171,7 @@ func collectContainerFields(pkg *packages.Package, fl *ast.FieldList) ([]Contain
 				InjectRaw:           injectRaw,
 				Inject:              parsed,
 				IsEmbeddedCandidate: parsed.Param,
+				IsReturns:           parsed.Returns,
 				Position:            position(pkg.Fset, f.Pos()),
 			})
 			continue
@@ -184,6 +189,7 @@ func collectContainerFields(pkg *packages.Package, fl *ast.FieldList) ([]Contain
 				InjectRaw:           injectRaw,
 				Inject:              parsed,
 				IsEmbeddedCandidate: parsed.Param,
+				IsReturns:           parsed.Returns,
 				Position:            position(pkg.Fset, f.Pos()),
 			})
 		}

@@ -27,6 +27,9 @@ type Container struct {
 	PkgPath string
 	// FuncName is the generated constructor function name.
 	FuncName string
+	// ReturnType, if non-nil, overrides the default *Name return type
+	// with a custom type (e.g. an interface).
+	ReturnType types.Type
 }
 
 type EmitInput struct {
@@ -63,6 +66,9 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 		err := buildImportAliases(aliases, c.PkgPath, c.Providers, importLog)
 		if err != nil {
 			return nil, fmt.Errorf("gen: failed to build import aliases: %v", err)
+		}
+		if c.ReturnType != nil {
+			addTypeImport(aliases, c.PkgPath, c.ReturnType)
 		}
 	}
 
@@ -135,10 +141,15 @@ func writeNewFunc(buf *bytes.Buffer, c Container, aliases map[string]string, onE
 	}
 	prints.Fprintf(buf, "// %s\n", doc)
 
+	retTypeStr := "*" + c.Name
+	if c.ReturnType != nil {
+		retTypeStr = qualifiedTypeString(c.ReturnType, c.PkgPath, aliases)
+	}
+
 	if returnErr {
-		prints.Fprintf(buf, "func %s(%s) (*%s, error) {\n", funcName, paramStr, c.Name)
+		prints.Fprintf(buf, "func %s(%s) (%s, error) {\n", funcName, paramStr, retTypeStr)
 	} else {
-		prints.Fprintf(buf, "func %s(%s) *%s {\n", funcName, paramStr, c.Name)
+		prints.Fprintf(buf, "func %s(%s) %s {\n", funcName, paramStr, retTypeStr)
 	}
 
 	for _, p := range c.Providers {
@@ -271,6 +282,38 @@ func buildImportAliases(aliases map[string]string, containerPkgPath string, prov
 	}
 
 	return nil
+}
+
+// addTypeImport adds the package of the given type to the alias map if needed.
+func addTypeImport(aliases map[string]string, containerPkgPath string, t types.Type) {
+	named, ok := t.(*types.Named)
+	if !ok {
+		return
+	}
+	obj := named.Obj()
+	if obj.Pkg() == nil || obj.Pkg().Path() == containerPkgPath {
+		return
+	}
+	pkgPath := obj.Pkg().Path()
+	if _, ok := aliases[pkgPath]; ok {
+		return
+	}
+	used := make(map[string]struct{})
+	for _, a := range aliases {
+		used[a] = struct{}{}
+	}
+	base := path.Base(pkgPath)
+	alias := base
+	if _, ok := used[alias]; ok {
+		for i := 2; ; i++ {
+			try := fmt.Sprintf("%s%d", base, i)
+			if _, ok := used[try]; !ok {
+				alias = try
+				break
+			}
+		}
+	}
+	aliases[pkgPath] = alias
 }
 
 func sortedImports(aliases map[string]string) []string {

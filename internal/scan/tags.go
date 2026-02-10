@@ -10,6 +10,7 @@ import (
 type InjectTag struct {
 	Provider string
 	Param    bool
+	Returns  bool
 }
 
 // parseInjectorTag parses a raw struct tag value for the `inject` key.
@@ -28,9 +29,13 @@ func parseInjectorTag(raw string) (InjectTag, error) {
 	}
 
 	for _, part := range parts {
-		// "param" is a standalone keyword, not a key:value pair.
+		// "param" and "returns" are standalone keywords, not key:value pairs.
 		if strings.TrimSpace(part) == "param" {
 			out.Param = true
+			continue
+		}
+		if strings.TrimSpace(part) == "returns" {
+			out.Returns = true
 			continue
 		}
 

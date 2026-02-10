@@ -173,26 +173,37 @@ func (a *App) runGenerate(args []string) int {
 		}
 		processedResults[key] = returnsErr
 
+		// Detect return type override from `inject:"returns"` field.
+		var returnType types.Type
+		for _, f := range c.Fields {
+			if f.IsReturns {
+				returnType = f.Type
+				break
+			}
+		}
+
 		outDir := filepath.Dir(positionToFile(c.Position))
 		outPath := filepath.Join(outDir, outFile)
 		if _, ok := emitInputs[outPath]; ok {
 			emitInputs[outPath] = emitInputs[outPath].Append(gen.Container{
-				Name:      c.Name,
-				Fields:    fields,
-				Providers: ordered,
-				PkgPath:   c.PkgPath,
-				FuncName:  "",
+				Name:       c.Name,
+				Fields:     fields,
+				Providers:  ordered,
+				PkgPath:    c.PkgPath,
+				FuncName:   "",
+				ReturnType: returnType,
 			})
 		} else {
 			emitInputs[outPath] = gen.EmitInput{
 				PackageName: c.PkgName,
 				OnError:     flags.OnError,
 				Containers: []gen.Container{{
-					Name:      c.Name,
-					Fields:    fields,
-					Providers: ordered,
-					PkgPath:   c.PkgPath,
-					FuncName:  "",
+					Name:       c.Name,
+					Fields:     fields,
+					Providers:  ordered,
+					PkgPath:    c.PkgPath,
+					FuncName:   "",
+					ReturnType: returnType,
 				}},
 			}
 		}
