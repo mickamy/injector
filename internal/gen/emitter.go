@@ -39,6 +39,7 @@ type EmitInput struct {
 func (ei EmitInput) Append(c Container) EmitInput {
 	return EmitInput{
 		PackageName: ei.PackageName,
+		OnError:     ei.OnError,
 		Containers:  append(ei.Containers, c),
 	}
 }
