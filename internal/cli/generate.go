@@ -130,12 +130,21 @@ func (a *App) runGenerate(args []string) int {
 			continue
 		}
 
+		// Filter out this container's own generated constructors to avoid
+		// conflicts during re-generation while keeping other containers'
+		// constructors available as providers.
+		funcName := "New" + strings.ToUpper(c.Name[:1]) + c.Name[1:]
+		selfProviders := resolve.FilterOutSelf(rproviders, c.PkgPath, []string{
+			funcName,
+			"Must" + funcName,
+		})
+
 		// Detect embedded containers and create synthetic providers.
 		embeddedRefs := resolve.DetectEmbeddedContainers(c.Fields, containerRegistry, processedResults)
 		syntheticProviders := resolve.CreateSyntheticProviders(embeddedRefs)
 
 		// Field-access providers override regular providers for the same type.
-		allProviders := resolve.MergeProviders(rproviders, syntheticProviders)
+		allProviders := resolve.MergeProviders(selfProviders, syntheticProviders)
 
 		g, err := resolve.BuildGraph(fields, allProviders)
 		if err != nil {

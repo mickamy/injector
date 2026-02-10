@@ -88,6 +88,24 @@ func ConvertProviders(ps []scan.ProviderSpec) ([]*Provider, error) {
 	return out, nil
 }
 
+// FilterOutSelf removes providers that match the container's own generated
+// constructor names (e.g. NewFoo, MustNewFoo) to prevent conflicts during
+// re-generation while keeping other containers' constructors available.
+func FilterOutSelf(providers []*Provider, pkgPath string, names []string) []*Provider {
+	exclude := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		exclude[pkgPath+"."+n] = struct{}{}
+	}
+	out := make([]*Provider, 0, len(providers))
+	for _, p := range providers {
+		if _, ok := exclude[p.NameWithPkg]; ok {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 func isMarkedField(f scan.ContainerField) bool {
 	// Marker-only: InjectRaw can be empty. We rely on the presence of the `inject` marker.
 	return hasInjectMarkerInRaw(f.TagRaw) || f.InjectRaw != ""

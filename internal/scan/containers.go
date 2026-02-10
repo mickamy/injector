@@ -78,10 +78,6 @@ func collectContainersInPackage(pkg *packages.Package) ([]ContainerSpec, error) 
 		if file == nil {
 			continue
 		}
-		if ast.IsGenerated(file) {
-			continue
-		}
-
 		for node := range ast.Preorder(file) {
 			ts, ok := node.(*ast.TypeSpec)
 			if !ok {
