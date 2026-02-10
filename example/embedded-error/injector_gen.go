@@ -8,14 +8,10 @@ import (
 )
 
 // NewApp initializes dependencies and constructs App.
-func NewApp() (*App, error) {
-	infra, err := di.NewInfra()
-	if err != nil {
-		return nil, err
-	}
+func NewApp(infra *di.Infra) *App {
 	user := service.NewUser(infra.Database)
 
 	return &App{
 		UserService: user,
-	}, nil
+	}
 }

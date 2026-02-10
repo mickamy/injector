@@ -11,7 +11,8 @@ type App struct {
 }
 
 func main() {
-	app := NewApp()
+	infra := di.NewInfra()
+	app := NewApp(infra)
 	if err := app.UserService.Register("Alice", "P@ssw0rd"); err != nil {
 		panic(err)
 	}
