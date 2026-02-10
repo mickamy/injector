@@ -112,6 +112,15 @@ func (a *App) runGenerate(args []string) int {
 	// Topologically sort containers so embedded containers are processed first.
 	sortedContainers := topoSortContainers(containers, containerRegistry)
 
+	// Filter out MustNew* constructors for all containers — they are convenience
+	// wrappers and should never be used as dependency providers.
+	var mustNames []string
+	for _, c := range containers {
+		fn := "MustNew" + strings.ToUpper(c.Name[:1]) + c.Name[1:]
+		mustNames = append(mustNames, c.PkgPath+"."+fn)
+	}
+	rproviders = filterOutByNameWithPkg(rproviders, mustNames)
+
 	// Track which containers return error from their generated constructor.
 	processedResults := make(map[string]bool)
 
@@ -415,6 +424,21 @@ func topoSortContainers(containers []scan.ContainerSpec, registry map[string]sca
 		if c, ok := byKey[k]; ok {
 			out = append(out, c)
 		}
+	}
+	return out
+}
+
+func filterOutByNameWithPkg(providers []*resolve.Provider, names []string) []*resolve.Provider {
+	exclude := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		exclude[n] = struct{}{}
+	}
+	out := make([]*resolve.Provider, 0, len(providers))
+	for _, p := range providers {
+		if _, ok := exclude[p.NameWithPkg]; ok {
+			continue
+		}
+		out = append(out, p)
 	}
 	return out
 }
