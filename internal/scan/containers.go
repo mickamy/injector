@@ -160,13 +160,14 @@ func collectContainerFields(pkg *packages.Package, fl *ast.FieldList) ([]Contain
 			}
 
 			out = append(out, ContainerField{
-				Name:      implicit,
-				TypeExpr:  typeExpr,
-				Type:      typ,
-				TagRaw:    tagRaw,
-				InjectRaw: injectRaw,
-				Inject:    parsed,
-				Position:  position(pkg.Fset, f.Pos()),
+				Name:                implicit,
+				TypeExpr:            typeExpr,
+				Type:                typ,
+				TagRaw:              tagRaw,
+				InjectRaw:           injectRaw,
+				Inject:              parsed,
+				IsEmbeddedCandidate: parsed.Param,
+				Position:            position(pkg.Fset, f.Pos()),
 			})
 			continue
 		}
@@ -176,55 +177,13 @@ func collectContainerFields(pkg *packages.Package, fl *ast.FieldList) ([]Contain
 				continue
 			}
 			out = append(out, ContainerField{
-				Name:      name.Name,
-				TypeExpr:  typeExpr,
-				Type:      typ,
-				TagRaw:    tagRaw,
-				InjectRaw: injectRaw,
-				Inject:    parsed,
-				Position:  position(pkg.Fset, f.Pos()),
-			})
-		}
-	}
-
-	// Second pass: collect "_" fields without inject tag as embedded candidates.
-	if len(out) > 0 {
-		for _, f := range fl.List {
-			if f == nil || f.Type == nil {
-				continue
-			}
-
-			// Only consider fields where all names are "_".
-			if len(f.Names) == 0 {
-				continue
-			}
-			allBlank := true
-			for _, name := range f.Names {
-				if name == nil || name.Name != "_" {
-					allBlank = false
-					break
-				}
-			}
-			if !allBlank {
-				continue
-			}
-
-			tagRaw, _ := parseStructTag(f.Tag)
-			if hasInjectKey(tagRaw) {
-				continue // already collected in the first pass
-			}
-
-			typeExpr := types.ExprString(f.Type)
-			typ := types.Type(nil)
-			if pkg.TypesInfo != nil {
-				typ = pkg.TypesInfo.TypeOf(f.Type)
-			}
-
-			out = append(out, ContainerField{
-				Name:                "_",
+				Name:                name.Name,
 				TypeExpr:            typeExpr,
 				Type:                typ,
-				IsEmbeddedCandidate: true,
+				TagRaw:              tagRaw,
+				InjectRaw:           injectRaw,
+				Inject:              parsed,
+				IsEmbeddedCandidate: parsed.Param,
 				Position:            position(pkg.Fset, f.Pos()),
 			})
 		}

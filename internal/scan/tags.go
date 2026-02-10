@@ -9,6 +9,7 @@ import (
 // InjectTag represents a parsed `inject:"..."` struct tag.
 type InjectTag struct {
 	Provider string
+	Param    bool
 }
 
 // parseInjectorTag parses a raw struct tag value for the `inject` key.
@@ -27,6 +28,12 @@ func parseInjectorTag(raw string) (InjectTag, error) {
 	}
 
 	for _, part := range parts {
+		// "param" is a standalone keyword, not a key:value pair.
+		if strings.TrimSpace(part) == "param" {
+			out.Param = true
+			continue
+		}
+
 		key, val, ok := cutKV(part)
 		if !ok {
 			return InjectTag{}, errors.New("invalid injector tag directive")

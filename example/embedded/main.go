@@ -6,7 +6,7 @@ import (
 )
 
 type App struct {
-	_           di.Infra     // embedded container
+	_           di.Infra `inject:"param"`
 	UserService service.User `inject:""`
 }
 

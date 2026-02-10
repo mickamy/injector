@@ -25,6 +25,10 @@ func ConvertContainerFields(c scan.ContainerSpec) ([]ContainerField, error) {
 
 	var out []ContainerField
 	for _, f := range c.Fields {
+		// Embedded container candidates are handled separately.
+		if f.IsEmbeddedCandidate {
+			continue
+		}
 		// Blank field: override only, include only if marked.
 		if f.Name == "_" {
 			if !isMarkedField(f) {
