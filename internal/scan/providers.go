@@ -62,6 +62,9 @@ func collectProvidersInPackage(pkg *packages.Package) ([]ProviderSpec, error) {
 		if file == nil {
 			continue
 		}
+		if ast.IsGenerated(file) {
+			continue
+		}
 
 		for _, decl := range file.Decls {
 			fd, ok := decl.(*ast.FuncDecl)

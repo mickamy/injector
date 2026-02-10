@@ -159,6 +159,8 @@ func CreateSyntheticProviders(refs []EmbeddedContainerRef) []*Provider {
 
 // MergeProviders merges regular and synthetic providers.
 //   - Field-access synthetic providers override regular providers for the same result type.
+//   - Synthetic param providers override regular providers for the same result type
+//     (e.g. generated NewFoo / MustNewFoo from a previous run).
 //   - Synthetic constructor providers are skipped if a regular provider with
 //     the same NameWithPkg already exists (e.g. from a previously generated file).
 func MergeProviders(regular, synthetic []*Provider) []*Provider {
@@ -166,11 +168,12 @@ func MergeProviders(regular, synthetic []*Provider) []*Provider {
 		return regular
 	}
 
-	// Collect types produced by field-access synthetic providers.
-	fieldAccessTypes := make(map[string]struct{})
+	// Collect types produced by synthetic providers that override regular ones:
+	// field-access providers and param providers.
+	overrideTypes := make(map[string]struct{})
 	for _, p := range synthetic {
-		if p.FieldAccess != "" {
-			fieldAccessTypes[typeKey(p.ResultType)] = struct{}{}
+		if p.FieldAccess != "" || p.IsParam {
+			overrideTypes[typeKey(p.ResultType)] = struct{}{}
 		}
 	}
 
@@ -182,19 +185,19 @@ func MergeProviders(regular, synthetic []*Provider) []*Provider {
 		}
 	}
 
-	// Filter regular providers: remove those overridden by field-access providers.
+	// Filter regular providers: remove those overridden by synthetic providers.
 	var out []*Provider
 	for _, p := range regular {
 		key := typeKey(p.ResultType)
-		if _, ok := fieldAccessTypes[key]; ok {
-			continue // overridden by field-access provider
+		if _, ok := overrideTypes[key]; ok {
+			continue // overridden by synthetic provider
 		}
 		out = append(out, p)
 	}
 
 	// Add synthetic providers, skipping constructors that already exist.
 	for _, p := range synthetic {
-		if p.FieldAccess == "" {
+		if p.FieldAccess == "" && !p.IsParam {
 			// Constructor provider: skip if already discovered as a regular provider.
 			if _, ok := regularByName[p.NameWithPkg]; ok {
 				continue
