@@ -241,8 +241,19 @@ func DetectParamFields(
 			}
 		}
 
+		name := f.Name
+		if name == "_" {
+			t := f.Type
+			if ptr, ok := t.(*types.Pointer); ok {
+				t = ptr.Elem()
+			}
+			if named, ok := t.(*types.Named); ok {
+				name = named.Obj().Name()
+			}
+		}
+
 		out = append(out, &Provider{
-			Name:       f.Name,
+			Name:       name,
 			ResultType: f.Type,
 			IsParam:    true,
 		})
