@@ -133,7 +133,7 @@ func (a *App) runGenerate(args []string) int {
 	var failed bool
 	emitInputs := make(map[string]gen.EmitInput)
 	for _, c := range sortedContainers {
-		fields, err := resolve.ConvertContainerFields(c)
+		fields, err := resolve.ConvertContainerFields(c, containerRegistry)
 		if err != nil {
 			prints.Fprintln(a.err, err.Error())
 			failed = true

@@ -3,6 +3,7 @@ package resolve
 import (
 	"errors"
 	"fmt"
+	"go/types"
 	"strings"
 
 	"github.com/mickamy/injector/internal/scan"
@@ -14,7 +15,11 @@ import (
 //   - If the Container has at least one `inject`-marked *public field* (non-blank), only those marked fields are included.
 //   - Blank fields ("_") are treated as provider overrides and do NOT switch the container into explicit mode.
 //     They are included only when they are `inject`-marked.
-func ConvertContainerFields(c scan.ContainerSpec) ([]ContainerField, error) {
+//
+// containerRegistry is used to distinguish container-type inject:"param" fields
+// (handled by DetectEmbeddedContainers) from non-container-type inject:"param"
+// fields (included as regular fields resolved by IsParam providers).
+func ConvertContainerFields(c scan.ContainerSpec, containerRegistry map[string]scan.ContainerSpec) ([]ContainerField, error) {
 	var errs []string
 
 	for _, f := range c.Fields {
@@ -25,9 +30,13 @@ func ConvertContainerFields(c scan.ContainerSpec) ([]ContainerField, error) {
 
 	var out []ContainerField
 	for _, f := range c.Fields {
-		// Embedded container candidates are handled separately.
+		// Container-type embedded candidates are handled separately
+		// by DetectEmbeddedContainers. Non-container inject:"param"
+		// fields are kept as regular fields.
 		if f.IsEmbeddedCandidate {
-			continue
+			if isContainerType(f.Type, containerRegistry) {
+				continue
+			}
 		}
 		// Returns fields define the return type, not an injectable field.
 		if f.IsReturns {
@@ -119,4 +128,25 @@ func hasInjectMarkerInRaw(tagRaw string) bool {
 		}
 	}
 	return false
+}
+
+// isContainerType checks whether the given type references a container in the registry.
+func isContainerType(t types.Type, registry map[string]scan.ContainerSpec) bool {
+	if t == nil {
+		return false
+	}
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	named, ok := t.(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	if obj == nil || obj.Pkg() == nil {
+		return false
+	}
+	key := obj.Pkg().Path() + "." + obj.Name()
+	_, ok = registry[key]
+	return ok
 }
