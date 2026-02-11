@@ -6,6 +6,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/mickamy/injector/internal/config"
@@ -178,6 +179,11 @@ func (a *App) runGenerate(args []string) int {
 			failed = true
 			continue
 		}
+
+		// Ensure IsParam providers appear in the same order as the
+		// container's field definitions so the constructor signature
+		// matches the Params order in container-derived providers.
+		ordered = sortParamsByFieldOrder(ordered, c.Fields)
 
 		if len(ordered) == 0 {
 			prints.Fprintf(
@@ -546,6 +552,38 @@ func buildContainerAsProviders(containers []scan.ContainerSpec) map[string]*reso
 		}
 	}
 	return result
+}
+
+// sortParamsByFieldOrder reorders IsParam providers in the ordered list so
+// that their relative order matches the container's field definitions.
+// This ensures the constructor signature matches the Params order used by callers.
+func sortParamsByFieldOrder(ordered []*resolve.Provider, fields []scan.ContainerField) []*resolve.Provider {
+	paramOrder := make(map[string]int)
+	idx := 0
+	for _, f := range fields {
+		if f.IsEmbeddedCandidate && f.Type != nil {
+			paramOrder[containerTypeKey(f.Type)] = idx
+			idx++
+		}
+	}
+
+	var params []*resolve.Provider
+	var rest []*resolve.Provider
+	for _, p := range ordered {
+		if p != nil && p.IsParam {
+			params = append(params, p)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+
+	sort.SliceStable(params, func(i, j int) bool {
+		ki := containerTypeKey(params[i].ResultType)
+		kj := containerTypeKey(params[j].ResultType)
+		return paramOrder[ki] < paramOrder[kj]
+	})
+
+	return append(params, rest...)
 }
 
 // replaceWithContainerProviders removes scanned providers that conflict with
