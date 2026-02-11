@@ -121,6 +121,12 @@ func (a *App) runGenerate(args []string) int {
 	}
 	rproviders = filterOutByNameWithPkg(rproviders, mustNames)
 
+	// Build container-derived providers for inject:"returns" containers.
+	// This ensures providers are available even on the first run (before
+	// any generated files exist) or when inject:"returns" is newly added.
+	containerProviders := buildContainerAsProviders(containers)
+	rproviders = replaceWithContainerProviders(rproviders, containerProviders)
+
 	// Track which containers return error from their generated constructor.
 	processedResults := make(map[string]bool)
 
@@ -190,6 +196,14 @@ func (a *App) runGenerate(args []string) int {
 			}
 		}
 		processedResults[key] = returnsErr
+
+		// Update the container-derived provider's ReturnError now that we
+		// know whether any dependency returns an error.  Because topo sort
+		// guarantees dependencies are processed first, subsequent containers
+		// will see the correct value.
+		if cp, ok := containerProviders[c.PkgPath+"."+funcName]; ok {
+			cp.ReturnError = returnsErr
+		}
 
 		// Detect return type override from `inject:"returns"` field.
 		var returnType types.Type
@@ -398,6 +412,31 @@ func topoSortContainers(containers []scan.ContainerSpec, registry map[string]sca
 		}
 	}
 
+	// Build returns-type → container key mapping for inject:"returns" deps.
+	returnsByType := make(map[string]string)
+	for _, c := range containers {
+		k := keyOf(c)
+		for _, f := range c.Fields {
+			if f.IsReturns && f.Type != nil {
+				returnsByType[containerTypeKey(f.Type)] = k
+			}
+		}
+	}
+
+	// Add dependency edges for fields whose type matches another container's returns type.
+	for _, c := range containers {
+		k := keyOf(c)
+		for _, f := range c.Fields {
+			if f.IsEmbeddedCandidate || f.IsReturns || f.Type == nil {
+				continue
+			}
+			typeKey := containerTypeKey(f.Type)
+			if depKey, ok := returnsByType[typeKey]; ok && depKey != k {
+				deps[k] = append(deps[k], depKey)
+			}
+		}
+	}
+
 	visited := make(map[string]bool)
 	var order []string
 	var visit func(key string)
@@ -455,4 +494,68 @@ func positionToFile(pos string) string {
 		return pos[:i]
 	}
 	return pos[:j]
+}
+
+// containerTypeKey returns a fully-qualified type string for use as a map key.
+func containerTypeKey(t types.Type) string {
+	return types.TypeString(t, func(p *types.Package) string {
+		if p == nil {
+			return ""
+		}
+		return p.Path()
+	})
+}
+
+// buildContainerAsProviders creates synthetic providers from containers that
+// have an inject:"returns" field. This allows other containers to depend on
+// these return types without relying on previously generated files.
+func buildContainerAsProviders(containers []scan.ContainerSpec) map[string]*resolve.Provider {
+	result := make(map[string]*resolve.Provider)
+	for _, c := range containers {
+		var returnsType types.Type
+		for _, f := range c.Fields {
+			if f.IsReturns {
+				returnsType = f.Type
+				break
+			}
+		}
+		if returnsType == nil {
+			continue
+		}
+
+		var params []types.Type
+		for _, f := range c.Fields {
+			if f.IsEmbeddedCandidate {
+				params = append(params, f.Type)
+			}
+		}
+
+		name := "New" + strings.ToUpper(c.Name[:1]) + c.Name[1:]
+		nameWithPkg := c.PkgPath + "." + name
+		result[nameWithPkg] = &resolve.Provider{
+			PkgPath:     c.PkgPath,
+			Name:        name,
+			NameWithPkg: nameWithPkg,
+			ResultType:  returnsType,
+			Params:      params,
+			ReturnError: false,
+		}
+	}
+	return result
+}
+
+// replaceWithContainerProviders removes scanned providers that conflict with
+// container-derived providers, then appends the container-derived ones.
+func replaceWithContainerProviders(providers []*resolve.Provider, containerProviders map[string]*resolve.Provider) []*resolve.Provider {
+	out := make([]*resolve.Provider, 0, len(providers))
+	for _, p := range providers {
+		if _, ok := containerProviders[p.NameWithPkg]; ok {
+			continue
+		}
+		out = append(out, p)
+	}
+	for _, cp := range containerProviders {
+		out = append(out, cp)
+	}
+	return out
 }
