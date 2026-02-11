@@ -158,6 +158,10 @@ func (a *App) runGenerate(args []string) int {
 		embeddedRefs := resolve.DetectEmbeddedContainers(c.Fields, containerRegistry, processedResults)
 		syntheticProviders := resolve.CreateSyntheticProviders(embeddedRefs)
 
+		// Detect non-container inject:"param" fields.
+		paramProviders := resolve.DetectParamFields(c.Fields, containerRegistry)
+		syntheticProviders = append(syntheticProviders, paramProviders...)
+
 		// Field-access providers override regular providers for the same type.
 		allProviders := resolve.MergeProviders(selfProviders, syntheticProviders)
 

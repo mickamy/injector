@@ -209,6 +209,48 @@ func MergeProviders(regular, synthetic []*Provider) []*Provider {
 	return out
 }
 
+// DetectParamFields finds inject:"param" fields that are NOT container types
+// and returns IsParam providers for them, so they become constructor parameters.
+func DetectParamFields(
+	fields []scan.ContainerField,
+	registry map[string]scan.ContainerSpec,
+) []*Provider {
+	var out []*Provider
+
+	for _, f := range fields {
+		if !f.IsEmbeddedCandidate {
+			continue
+		}
+		if f.Type == nil {
+			continue
+		}
+
+		// Check if it's a container type — if so, skip
+		// (handled by DetectEmbeddedContainers).
+		t := f.Type
+		if ptr, ok := t.(*types.Pointer); ok {
+			t = ptr.Elem()
+		}
+		if named, ok := t.(*types.Named); ok {
+			obj := named.Obj()
+			if obj != nil && obj.Pkg() != nil {
+				key := obj.Pkg().Path() + "." + obj.Name()
+				if _, ok := registry[key]; ok {
+					continue
+				}
+			}
+		}
+
+		out = append(out, &Provider{
+			Name:       f.Name,
+			ResultType: f.Type,
+			IsParam:    true,
+		})
+	}
+
+	return out
+}
+
 func upperFirst(s string) string {
 	if s == "" {
 		return ""
