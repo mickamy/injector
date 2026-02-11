@@ -70,6 +70,11 @@ func EmitContainers(in EmitInput) ([]byte, error) {
 		if c.ReturnType != nil {
 			addTypeImport(aliases, c.PkgPath, c.ReturnType)
 		}
+		for _, p := range c.Providers {
+			if p != nil && p.IsParam && p.ResultType != nil {
+				addTypeImport(aliases, c.PkgPath, p.ResultType)
+			}
+		}
 	}
 
 	var buf bytes.Buffer
@@ -304,6 +309,9 @@ func buildImportAliases(aliases map[string]string, containerPkgPath string, prov
 
 // addTypeImport adds the package of the given type to the alias map if needed.
 func addTypeImport(aliases map[string]string, containerPkgPath string, t types.Type) {
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
 	named, ok := t.(*types.Named)
 	if !ok {
 		return
