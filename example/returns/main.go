@@ -16,6 +16,6 @@ func (a *app) Greet(name string) string {
 }
 
 func main() {
-	g := NewApp()
+	g := NewGreeter()
 	fmt.Println(g.Greet("World"))
 }

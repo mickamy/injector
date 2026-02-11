@@ -117,7 +117,7 @@ func (a *App) runGenerate(args []string) int {
 	// wrappers and should never be used as dependency providers.
 	var mustNames []string
 	for _, c := range containers {
-		fn := "MustNew" + strings.ToUpper(c.Name[:1]) + c.Name[1:]
+		fn := "MustNew" + constructorBaseName(c)
 		mustNames = append(mustNames, c.PkgPath+"."+fn)
 	}
 	rproviders = filterOutByNameWithPkg(rproviders, mustNames)
@@ -149,7 +149,7 @@ func (a *App) runGenerate(args []string) int {
 		// Filter out this container's own generated constructors to avoid
 		// conflicts during re-generation while keeping other containers'
 		// constructors available as providers.
-		funcName := "New" + strings.ToUpper(c.Name[:1]) + c.Name[1:]
+		funcName := "New" + constructorBaseName(c)
 		selfProviders := resolve.FilterOutSelf(rproviders, c.PkgPath, []string{
 			funcName,
 			"Must" + funcName,
@@ -232,7 +232,7 @@ func (a *App) runGenerate(args []string) int {
 				Fields:     fields,
 				Providers:  ordered,
 				PkgPath:    c.PkgPath,
-				FuncName:   "",
+				FuncName:   funcName,
 				ReturnType: returnType,
 			})
 		} else {
@@ -244,7 +244,7 @@ func (a *App) runGenerate(args []string) int {
 					Fields:     fields,
 					Providers:  ordered,
 					PkgPath:    c.PkgPath,
-					FuncName:   "",
+					FuncName:   funcName,
 					ReturnType: returnType,
 				}},
 			}
@@ -516,6 +516,25 @@ func containerTypeKey(t types.Type) string {
 	})
 }
 
+// constructorBaseName returns the base name for generated constructors.
+// If the container has an inject:"returns" field with a named type, the
+// type name is used (e.g. OAuthCallback); otherwise the struct name is
+// upper-first'd (e.g. oauthCallback → OauthCallback).
+func constructorBaseName(c scan.ContainerSpec) string {
+	for _, f := range c.Fields {
+		if f.IsReturns && f.Type != nil {
+			t := f.Type
+			if ptr, ok := t.(*types.Pointer); ok {
+				t = ptr.Elem()
+			}
+			if named, ok := t.(*types.Named); ok {
+				return named.Obj().Name()
+			}
+		}
+	}
+	return strings.ToUpper(c.Name[:1]) + c.Name[1:]
+}
+
 // buildContainerAsProviders creates synthetic providers from containers that
 // have an inject:"returns" field. This allows other containers to depend on
 // these return types without relying on previously generated files.
@@ -540,7 +559,7 @@ func buildContainerAsProviders(containers []scan.ContainerSpec) map[string]*reso
 			}
 		}
 
-		name := "New" + strings.ToUpper(c.Name[:1]) + c.Name[1:]
+		name := "New" + constructorBaseName(c)
 		nameWithPkg := c.PkgPath + "." + name
 		result[nameWithPkg] = &resolve.Provider{
 			PkgPath:     c.PkgPath,

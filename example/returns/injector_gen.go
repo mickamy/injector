@@ -6,8 +6,8 @@ import (
 	greeter "github.com/mickamy/injector/example/returns/greeter"
 )
 
-// NewApp initializes dependencies and constructs app.
-func NewApp() greeter.Greeter {
+// NewGreeter initializes dependencies and constructs app.
+func NewGreeter() greeter.Greeter {
 	greeter := greeter.NewGreeter()
 
 	return &app{
