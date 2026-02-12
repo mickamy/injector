@@ -106,12 +106,9 @@ func collectProvidersInPackage(pkg *packages.Package) ([]ProviderSpec, error) {
 				continue
 			}
 
-			sig, _ := pkg.TypesInfo.Defs[fd.Name].Type().(*types.Signature)
-			if sig == nil {
-				// Fallback: try to obtain signature from types info on FuncDecl.
-				if obj, ok := pkg.TypesInfo.Defs[fd.Name]; ok && obj != nil {
-					sig, _ = obj.Type().(*types.Signature)
-				}
+			var sig *types.Signature
+			if obj := pkg.TypesInfo.Defs[fd.Name]; obj != nil {
+				sig, _ = obj.Type().(*types.Signature)
 			}
 			if sig == nil {
 				continue
