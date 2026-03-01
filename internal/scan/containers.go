@@ -15,11 +15,12 @@ import (
 
 // ContainerSpec represents a discovered container struct.
 type ContainerSpec struct {
-	PkgPath  string
-	PkgName  string
-	Name     string
-	Position string
-	Fields   []ContainerField
+	PkgPath    string
+	PkgName    string
+	Name       string
+	Position   string
+	Fields     []ContainerField
+	StructType types.Type // The named type of the container struct (e.g. *types.Named for oauthCallback).
 }
 
 // ContainerField represents a field within a container struct.
@@ -102,12 +103,18 @@ func collectContainersInPackage(pkg *packages.Package) ([]ContainerSpec, error) 
 				continue
 			}
 
+			var structType types.Type
+			if obj := pkg.TypesInfo.Defs[ts.Name]; obj != nil {
+				structType = obj.Type()
+			}
+
 			spec := ContainerSpec{
-				PkgPath:  pkg.PkgPath,
-				PkgName:  pkg.Name,
-				Name:     ts.Name.Name,
-				Position: position(pkg.Fset, ts.Pos()),
-				Fields:   fields,
+				PkgPath:    pkg.PkgPath,
+				PkgName:    pkg.Name,
+				Name:       ts.Name.Name,
+				Position:   position(pkg.Fset, ts.Pos()),
+				Fields:     fields,
+				StructType: structType,
 			}
 
 			out = append(out, spec)

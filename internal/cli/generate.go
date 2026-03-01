@@ -535,21 +535,25 @@ func constructorBaseName(c scan.ContainerSpec) string {
 	return strings.ToUpper(c.Name[:1]) + c.Name[1:]
 }
 
-// buildContainerAsProviders creates synthetic providers from containers that
-// have an inject:"returns" field. This allows other containers to depend on
-// these return types without relying on previously generated files.
+// buildContainerAsProviders creates synthetic providers from containers.
+// This allows other containers to depend on these types without relying
+// on previously generated files.
 func buildContainerAsProviders(containers []scan.ContainerSpec) map[string]*resolve.Provider {
 	result := make(map[string]*resolve.Provider)
 	for _, c := range containers {
-		var returnsType types.Type
+		var resultType types.Type
 		for _, f := range c.Fields {
 			if f.IsReturns {
-				returnsType = f.Type
+				resultType = f.Type
 				break
 			}
 		}
-		if returnsType == nil {
-			continue
+		if resultType == nil {
+			// No inject:"returns" — use *StructType as the result type.
+			if c.StructType == nil {
+				continue
+			}
+			resultType = types.NewPointer(c.StructType)
 		}
 
 		var params []types.Type
@@ -565,7 +569,7 @@ func buildContainerAsProviders(containers []scan.ContainerSpec) map[string]*reso
 			PkgPath:     c.PkgPath,
 			Name:        name,
 			NameWithPkg: nameWithPkg,
-			ResultType:  returnsType,
+			ResultType:  resultType,
 			Params:      params,
 			ReturnError: false,
 		}
