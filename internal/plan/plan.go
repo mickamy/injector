@@ -1,0 +1,447 @@
+package plan
+
+import (
+	"fmt"
+	"go/token"
+	"go/types"
+	"strings"
+	"unicode"
+
+	"github.com/mickamy/injector/internal/diag"
+	"github.com/mickamy/injector/internal/ir"
+)
+
+// Options carries CLI-level defaults that may be overridden per container by
+// a //injector:container directive.
+type Options struct {
+	// Must is the default value applied to containers whose directive does
+	// not explicitly specify must.
+	Must bool
+}
+
+// Plan is the resolved sequence of operations needed to construct a single
+// container, plus metadata used by the emit layer.
+type Plan struct {
+	Container       ir.Container
+	ConstructorName string
+	ReturnType      types.Type
+	EmitMust        bool
+	ReturnsError    bool
+
+	// Inputs are constructor parameters in container-field order.
+	Inputs []Input
+	// Steps are resolution operations in execution order (deps first).
+	Steps []Step
+	// Outputs map RoleOut field names to the step that produces their value.
+	Outputs []Output
+}
+
+// StepKind classifies a step in a Plan.
+type StepKind int
+
+const (
+	// StepKindProvider invokes a provider function with the given args.
+	StepKindProvider StepKind = iota
+	// StepKindInput refers to a constructor input parameter.
+	StepKindInput
+)
+
+// Step is a single resolution operation.
+type Step struct {
+	Kind    StepKind
+	VarName string
+	OutType types.Type
+
+	// For StepKindProvider:
+	Provider *ir.Provider
+	ArgSteps []int
+
+	// For StepKindInput:
+	InputIndex int
+}
+
+// Input is a constructor parameter (declared via inject:"arg").
+type Input struct {
+	Name string
+	Type types.Type
+}
+
+// Output is a RoleOut field assignment: which step's value goes into which
+// container field.
+type Output struct {
+	FieldName string
+	StepIndex int
+}
+
+// Build resolves dependencies for one container against the given provider
+// index and CLI defaults, returning a Plan that the emit layer can consume.
+func Build(c ir.Container, idx *Index, opts Options) (Plan, []diag.Diag) {
+	var diags []diag.Diag
+
+	constructorName := constructorNameFor(c)
+	returnType, retDiag := resolveReturnType(c)
+	if retDiag != nil {
+		diags = append(diags, *retDiag)
+	}
+	emitMust := mergeMust(c.Directive.Must, opts.Must)
+
+	inputs, inDiags := buildInputs(c)
+	diags = append(diags, inDiags...)
+
+	overrides, ovDiags := buildOverrides(c, idx)
+	diags = append(diags, ovDiags...)
+
+	r := &resolver{
+		idx:       idx,
+		inputs:    inputs,
+		overrides: overrides,
+		stepByKey: map[string]int{},
+		active:    map[string]bool{},
+	}
+
+	var outputs []Output
+	for _, f := range c.Fields {
+		if f.Role != ir.RoleOut {
+			continue
+		}
+		stepIdx, ds := r.resolveField(f)
+		diags = append(diags, ds...)
+		if stepIdx < 0 {
+			continue
+		}
+		outputs = append(outputs, Output{FieldName: f.Name, StepIndex: stepIdx})
+	}
+
+	returnsErr := false
+	for _, s := range r.steps {
+		if s.Kind == StepKindProvider && s.Provider != nil && s.Provider.ReturnsError {
+			returnsErr = true
+			break
+		}
+	}
+
+	return Plan{
+		Container:       c,
+		ConstructorName: constructorName,
+		ReturnType:      returnType,
+		EmitMust:        emitMust,
+		ReturnsError:    returnsErr,
+		Inputs:          inputs,
+		Steps:           r.steps,
+		Outputs:         outputs,
+	}, diags
+}
+
+// resolver holds mutable state during resolution.
+type resolver struct {
+	idx       *Index
+	inputs    []Input
+	overrides map[string]*ir.Provider // typeKey → provider
+	steps     []Step
+	stepByKey map[string]int
+	active    map[string]bool
+}
+
+func (r *resolver) resolveField(f ir.Field) (int, []diag.Diag) {
+	if f.ProviderRef.HasRef() {
+		return r.resolveByRef(f.Type, f.ProviderRef.Raw, f.Pos)
+	}
+	return r.resolveByType(f.Type, f.Pos, "field "+f.Name)
+}
+
+func (r *resolver) resolveByType(want types.Type, pos token.Position, parent string) (int, []diag.Diag) {
+	tk := TypeKey(want)
+
+	for i, in := range r.inputs {
+		if TypeKey(in.Type) == tk {
+			return r.useInput(i), nil
+		}
+	}
+
+	if p, ok := r.overrides[tk]; ok {
+		return r.resolveProvider(p, pos)
+	}
+
+	candidates := r.idx.LookupByType(want)
+	if len(candidates) == 0 {
+		return -1, []diag.Diag{
+			diag.Errorf(pos, "no provider for %s (required by %s)", TypeString(want), parent),
+		}
+	}
+	if len(candidates) > 1 {
+		return -1, []diag.Diag{
+			diag.Errorf(pos, "multiple providers for %s (required by %s)", TypeString(want), parent).
+				WithHints(FormatCandidates(candidates)...),
+		}
+	}
+	return r.resolveProvider(candidates[0], pos)
+}
+
+func (r *resolver) resolveByRef(want types.Type, ref string, pos token.Position) (int, []diag.Diag) {
+	candidates := r.idx.LookupByRef(ref)
+	if len(candidates) == 0 {
+		return -1, []diag.Diag{
+			diag.Errorf(pos, "no provider matches %q", ref),
+		}
+	}
+	var matched []*ir.Provider
+	for _, p := range candidates {
+		if p.Result != nil && types.Identical(p.Result, want) {
+			matched = append(matched, p)
+		}
+	}
+	if len(matched) == 0 {
+		return -1, []diag.Diag{
+			diag.Errorf(pos, "provider %q does not produce %s", ref, TypeString(want)).
+				WithHints(FormatCandidates(candidates)...),
+		}
+	}
+	if len(matched) > 1 {
+		return -1, []diag.Diag{
+			diag.Errorf(pos, "reference %q is ambiguous", ref).
+				WithHints(FormatCandidates(matched)...),
+		}
+	}
+	return r.resolveProvider(matched[0], pos)
+}
+
+func (r *resolver) useInput(idx int) int {
+	key := fmt.Sprintf("input:%d", idx)
+	if id, ok := r.stepByKey[key]; ok {
+		return id
+	}
+	in := r.inputs[idx]
+	r.steps = append(r.steps, Step{
+		Kind:       StepKindInput,
+		VarName:    in.Name,
+		OutType:    in.Type,
+		InputIndex: idx,
+	})
+	id := len(r.steps) - 1
+	r.stepByKey[key] = id
+	return id
+}
+
+func (r *resolver) resolveProvider(p *ir.Provider, pos token.Position) (int, []diag.Diag) {
+	key := "provider:" + ProviderName(p)
+	if id, ok := r.stepByKey[key]; ok {
+		return id, nil
+	}
+	if r.active[key] {
+		return -1, []diag.Diag{
+			diag.Errorf(pos, "circular dependency at %s", ProviderName(p)),
+		}
+	}
+	r.active[key] = true
+	defer delete(r.active, key)
+
+	var argIDs []int
+	var diags []diag.Diag
+	for _, pt := range p.Params {
+		argID, ds := r.resolveByType(pt, pos, ProviderName(p))
+		diags = append(diags, ds...)
+		if argID < 0 {
+			return -1, diags
+		}
+		argIDs = append(argIDs, argID)
+	}
+
+	r.steps = append(r.steps, Step{
+		Kind:     StepKindProvider,
+		VarName:  varNameForProvider(p, r.steps),
+		OutType:  p.Result,
+		Provider: p,
+		ArgSteps: argIDs,
+	})
+	id := len(r.steps) - 1
+	r.stepByKey[key] = id
+	return id, diags
+}
+
+func constructorNameFor(c ir.Container) string {
+	if c.Directive.Name != "" {
+		return c.Directive.Name
+	}
+	return "New" + upperFirst(c.StructName)
+}
+
+func resolveReturnType(c ir.Container) (types.Type, *diag.Diag) {
+	var taggedReturns *ir.Field
+	for i := range c.Fields {
+		f := &c.Fields[i]
+		if !f.IsReturns {
+			continue
+		}
+		if taggedReturns != nil {
+			d := diag.Errorf(f.Pos,
+				`multiple inject:"returns" fields (also at %s)`, taggedReturns.Pos)
+			return nil, &d
+		}
+		taggedReturns = f
+	}
+
+	if c.Directive.ReturnType != nil {
+		if taggedReturns != nil {
+			d := diag.Errorf(c.Pos,
+				`directive returns= conflicts with inject:"returns" on field %s`,
+				taggedReturns.Name)
+			return nil, &d
+		}
+		return c.Directive.ReturnType, nil
+	}
+
+	if taggedReturns != nil {
+		return taggedReturns.Type, nil
+	}
+	if c.StructType != nil {
+		return types.NewPointer(c.StructType), nil
+	}
+	return nil, nil
+}
+
+func mergeMust(d ir.MustMode, cliMust bool) bool {
+	switch d {
+	case ir.MustOn:
+		return true
+	case ir.MustOff:
+		return false
+	default:
+		return cliMust
+	}
+}
+
+func buildInputs(c ir.Container) ([]Input, []diag.Diag) {
+	var inputs []Input
+	var diags []diag.Diag
+	seen := map[string]token.Position{}
+	for _, f := range c.Fields {
+		if f.Role != ir.RoleArg {
+			continue
+		}
+		name := f.ArgName
+		if name == "" {
+			name = deriveInputName(f.Type)
+		}
+		tk := TypeKey(f.Type)
+		if prev, ok := seen[tk]; ok {
+			diags = append(diags, diag.Errorf(f.Pos,
+				"duplicate input type %s (first declared at %s)", TypeString(f.Type), prev))
+			continue
+		}
+		seen[tk] = f.Pos
+		inputs = append(inputs, Input{Name: name, Type: f.Type})
+	}
+	return inputs, diags
+}
+
+func buildOverrides(c ir.Container, idx *Index) (map[string]*ir.Provider, []diag.Diag) {
+	out := map[string]*ir.Provider{}
+	var diags []diag.Diag
+	for _, f := range c.Fields {
+		if f.Role != ir.RoleOverride {
+			continue
+		}
+		if !f.ProviderRef.HasRef() {
+			continue
+		}
+		candidates := idx.LookupByRef(f.ProviderRef.Raw)
+		if len(candidates) == 0 {
+			diags = append(diags, diag.Errorf(f.Pos,
+				"no provider matches %q", f.ProviderRef.Raw))
+			continue
+		}
+		var matched []*ir.Provider
+		for _, p := range candidates {
+			if p.Result != nil && types.Identical(p.Result, f.Type) {
+				matched = append(matched, p)
+			}
+		}
+		switch len(matched) {
+		case 0:
+			diags = append(diags, diag.Errorf(f.Pos,
+				"provider %q does not produce %s", f.ProviderRef.Raw, TypeString(f.Type)).
+				WithHints(FormatCandidates(candidates)...))
+		case 1:
+			out[TypeKey(f.Type)] = matched[0]
+		default:
+			diags = append(diags, diag.Errorf(f.Pos,
+				"reference %q is ambiguous", f.ProviderRef.Raw).
+				WithHints(FormatCandidates(matched)...))
+		}
+	}
+	return out, diags
+}
+
+func deriveInputName(t types.Type) string {
+	if t == nil {
+		return "arg"
+	}
+	if ptr, ok := t.(*types.Pointer); ok {
+		return deriveInputName(ptr.Elem())
+	}
+	if named, ok := t.(*types.Named); ok {
+		if obj := named.Obj(); obj != nil && obj.Name() != "" {
+			return lowerFirst(obj.Name())
+		}
+	}
+	return "arg"
+}
+
+func varNameForProvider(p *ir.Provider, existing []Step) string {
+	base := p.FuncName
+	if strings.HasPrefix(base, "New") && len(base) > 3 {
+		base = base[3:]
+	}
+	base = lowerFirst(base)
+	if base == "" {
+		base = "v"
+	}
+
+	used := map[string]struct{}{}
+	for _, s := range existing {
+		used[s.VarName] = struct{}{}
+	}
+	if _, ok := used[base]; !ok {
+		return base
+	}
+	for i := 2; ; i++ {
+		try := fmt.Sprintf("%s%d", base, i)
+		if _, ok := used[try]; !ok {
+			return try
+		}
+	}
+}
+
+func upperFirst(s string) string {
+	if s == "" {
+		return ""
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
+}
+
+// lowerFirst lowercases the leading run of uppercase letters of s, following
+// the Go convention that "URL" → "url" and "URLPath" → "urlPath" (the last
+// cap of a leading run is preserved when followed by a lowercase letter).
+func lowerFirst(s string) string {
+	if s == "" {
+		return ""
+	}
+	runes := []rune(s)
+	n := len(runes)
+	i := 0
+	for i < n && unicode.IsUpper(runes[i]) {
+		i++
+	}
+	if i == 0 {
+		return s
+	}
+	if i < n && i > 1 {
+		i--
+	}
+	for j := 0; j < i; j++ {
+		runes[j] = unicode.ToLower(runes[j])
+	}
+	return string(runes)
+}
