@@ -1,5 +1,7 @@
 package user
 
+import "fmt"
+
 type Service interface {
 	Create(user User) error
 }
@@ -9,7 +11,10 @@ type service struct {
 }
 
 func (s *service) Create(user User) error {
-	return s.repository.Create(user)
+	if err := s.repository.Create(user); err != nil {
+		return fmt.Errorf("create user: %w", err)
+	}
+	return nil
 }
 
 func NewService(repository Repository) Service {

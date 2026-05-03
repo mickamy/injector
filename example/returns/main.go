@@ -6,9 +6,9 @@ import (
 	"github.com/mickamy/injector/example/returns/greeter"
 )
 
+//injector:container name=NewGreeter
 type app struct {
-	_       greeter.Greeter `inject:"returns"`
-	service greeter.Greeter `inject:""`
+	service greeter.Greeter `inject:"returns"`
 }
 
 func (a *app) Greet(name string) string {

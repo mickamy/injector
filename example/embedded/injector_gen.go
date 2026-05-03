@@ -3,13 +3,13 @@
 package main
 
 import (
-	di "github.com/mickamy/injector/example/embedded/di"
+	infra "github.com/mickamy/injector/example/embedded/infra"
 	service "github.com/mickamy/injector/example/embedded/service"
 )
 
 // NewApp initializes dependencies and constructs App.
-func NewApp(infra *di.Infra) *App {
-	user := service.NewUser(infra.Database)
+func NewApp(database *infra.Database) *App {
+	user := service.NewUser(database)
 
 	return &App{
 		UserService: user,

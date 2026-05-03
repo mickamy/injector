@@ -21,3 +21,12 @@ func NewContainer() (*Container, error) {
 		UserService: user,
 	}, nil
 }
+
+// MustNewContainer initializes dependencies and constructs Container or panics on failure.
+func MustNewContainer() *Container {
+	v, err := NewContainer()
+	if err != nil {
+		panic(err)
+	}
+	return v
+}

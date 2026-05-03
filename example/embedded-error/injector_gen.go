@@ -3,15 +3,20 @@
 package main
 
 import (
-	di "github.com/mickamy/injector/example/embedded-error/di"
+	infra "github.com/mickamy/injector/example/embedded-error/infra"
 	service "github.com/mickamy/injector/example/embedded-error/service"
 )
 
 // NewApp initializes dependencies and constructs App.
-func NewApp(infra *di.Infra) *App {
-	user := service.NewUser(infra.Database)
+func NewApp(database *infra.Database) *App {
+	user := service.NewUser(database)
 
 	return &App{
 		UserService: user,
 	}
+}
+
+// MustNewApp initializes dependencies and constructs App or panics on failure.
+func MustNewApp(database *infra.Database) *App {
+	return NewApp(database)
 }

@@ -19,3 +19,12 @@ func NewInfra() (*Infra, error) {
 		Database: database,
 	}, nil
 }
+
+// MustNewInfra initializes dependencies and constructs Infra or panics on failure.
+func MustNewInfra() *Infra {
+	v, err := NewInfra()
+	if err != nil {
+		panic(err)
+	}
+	return v
+}

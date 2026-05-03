@@ -6,13 +6,13 @@ import (
 )
 
 type Container struct {
-	_           config.DatabaseConfig `inject:"provider:config.NewReaderDatabaseConfig"`
+	_           config.DatabaseConfig `inject:"with=config.NewReaderDatabaseConfig"`
 	UserService service.User          `inject:""`
 }
 
-func init() {
-	container := NewContainer()
-	if err := container.UserService.Register("Alice", "P@ssw0rd"); err != nil {
+func main() {
+	c := NewContainer()
+	if err := c.UserService.Register("Alice", "P@ssw0rd"); err != nil {
 		panic(err)
 	}
 }

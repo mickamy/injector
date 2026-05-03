@@ -2,20 +2,18 @@ package main
 
 import (
 	"github.com/mickamy/injector/example/embedded-error/di"
+	"github.com/mickamy/injector/example/embedded-error/infra"
 	"github.com/mickamy/injector/example/embedded-error/service"
 )
 
 type App struct {
-	_           di.Infra `inject:"param"`
-	UserService service.User `inject:""`
+	_           *infra.Database `inject:"arg"`
+	UserService service.User    `inject:""`
 }
 
 func main() {
-	infra, err := di.NewInfra()
-	if err != nil {
-		panic(err)
-	}
-	app := NewApp(infra)
+	inf := di.MustNewInfra()
+	app := MustNewApp(inf.Database)
 	if err := app.UserService.Register("Alice", "P@ssw0rd"); err != nil {
 		panic(err)
 	}

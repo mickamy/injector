@@ -6,6 +6,6 @@ type DatabaseConfig struct {
 
 func NewReaderDatabaseConfig() DatabaseConfig {
 	return DatabaseConfig{
-		URL: "postgres://reader:postgres@localhost:5432/postgres?sslmode=disable",
+		URL: "postgres://reader@db.example/app?sslmode=disable",
 	}
 }

@@ -7,12 +7,12 @@ import (
 )
 
 type TaskContainer struct {
-	_       config.DatabaseConfig `inject:"provider:config.NewWriterDatabaseConfig"`
+	_       config.DatabaseConfig `inject:"with=config.NewWriterDatabaseConfig"`
 	Service task.Service          `inject:""`
 }
 
 type UserContainer struct {
-	_       config.DatabaseConfig `inject:"provider:config.NewWriterDatabaseConfig"`
+	_       config.DatabaseConfig `inject:"with=config.NewWriterDatabaseConfig"`
 	Service user.Service          `inject:""`
 }
 
