@@ -137,6 +137,91 @@ type Foo struct {
 	}
 }
 
+func TestImports_AddType_AnonymousInterfaceWalksMethods(t *testing.T) {
+	t.Parallel()
+
+	// Anonymous interface that references io via a method signature.
+	src := `package myapp
+import "io"
+type _ io.Reader
+`
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "x.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	info := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+		Defs:  make(map[*ast.Ident]types.Object),
+		Uses:  make(map[*ast.Ident]types.Object),
+	}
+	pkg, err := (&types.Config{Importer: importer.Default()}).Check("myapp", fset, []*ast.File{f}, info)
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+
+	tv, err := types.Eval(fset, pkg, f.Pos(), "interface{ Read(io.Reader) error }")
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+
+	im := emit.New("myapp")
+	im.AddType(tv.Type)
+
+	found := false
+	for _, e := range im.Sorted() {
+		if e.Path == "io" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected io import via anonymous interface method, got %+v", im.Sorted())
+	}
+}
+
+func TestImports_AddType_AnonymousStructWalksFields(t *testing.T) {
+	t.Parallel()
+
+	src := `package myapp
+import "io"
+type _ io.Reader
+`
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "x.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	info := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+		Defs:  make(map[*ast.Ident]types.Object),
+		Uses:  make(map[*ast.Ident]types.Object),
+	}
+	pkg, err := (&types.Config{Importer: importer.Default()}).Check("myapp", fset, []*ast.File{f}, info)
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+
+	tv, err := types.Eval(fset, pkg, f.Pos(), "struct{ R io.Reader }")
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+
+	im := emit.New("myapp")
+	im.AddType(tv.Type)
+
+	found := false
+	for _, e := range im.Sorted() {
+		if e.Path == "io" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected io import via anonymous struct field, got %+v", im.Sorted())
+	}
+}
+
 func TestImports_AddTypeContainerPackageIgnored(t *testing.T) {
 	t.Parallel()
 

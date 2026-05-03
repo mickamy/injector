@@ -147,13 +147,13 @@ func (im *Imports) qualify(p *types.Package) string {
 //
 // The walk descends through the type shapes that may appear in the generated
 // source: pointers, slices/arrays/maps/channels, signature parameters and
-// results, and named types' type arguments. It deliberately does NOT descend
-// into a *types.Named's Underlying form, nor into *types.Interface methods
-// or *types.Struct fields — those internals are not written verbatim into
-// the generated file (only the named type itself is qualified), so adding
-// their packages would cause "imported and not used" errors. If we ever
-// inline anonymous interface/struct shapes into the output, those cases
-// would need to be added here.
+// results, named types' type arguments, and the methods/fields of anonymous
+// *types.Interface and *types.Struct values (which types.TypeString writes
+// verbatim into the output, so their internal references must be imported).
+// It deliberately does NOT descend into a *types.Named's Underlying form:
+// only the named type itself is qualified in the output, so following its
+// underlying methods/fields would record packages that don't appear in the
+// generated source and would trip "imported and not used".
 func collectPkgs(t types.Type) []*types.Package {
 	var out []*types.Package
 	seen := map[*types.Package]struct{}{}
@@ -199,6 +199,19 @@ func collectPkgs(t types.Type) []*types.Package {
 				for v := range results.Variables() {
 					walk(v.Type())
 				}
+			}
+		case *types.Interface:
+			// Anonymous interface — types.TypeString prints each method
+			// signature verbatim, so we must record packages they reference.
+			// Named interfaces never reach this case because *types.Named is
+			// matched earlier without descending into Underlying.
+			for m := range tt.Methods() {
+				walk(m.Type())
+			}
+		case *types.Struct:
+			// Anonymous struct — same reasoning as the Interface case.
+			for f := range tt.Fields() {
+				walk(f.Type())
 			}
 		}
 	}
