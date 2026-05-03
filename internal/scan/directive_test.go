@@ -111,6 +111,15 @@ func TestParseDirective(t *testing.T) {
 			lines:  []string{"//go:generate something", "//injector:provider foo", "// injector:container name=X"},
 			wantPD: scan.ParsedDirective{Found: true, Name: "X"},
 		},
+		{
+			name:   "tab separator",
+			lines:  []string{"//injector:container\tname=Foo"},
+			wantPD: scan.ParsedDirective{Found: true, Name: "Foo"},
+		},
+		{
+			name:  "tag without separator is rejected",
+			lines: []string{"//injector:containerXYZ"},
+		},
 	}
 
 	for _, tt := range tests {

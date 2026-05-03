@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/mickamy/injector/internal/ir"
 )
@@ -77,13 +79,20 @@ func stripCommentMarker(line string) (string, bool) {
 }
 
 // stripDirectivePrefix matches "injector:container" exactly or followed by
-// whitespace, returning the trailing arguments.
+// whitespace (any kind: space, tab, etc.), returning the trailing arguments.
+//
+// A non-whitespace character right after the tag (e.g. "injector:containerXYZ")
+// is rejected so the prefix is not mistaken for our directive.
 func stripDirectivePrefix(body string) (string, bool) {
-	if body == directiveTag {
+	if !strings.HasPrefix(body, directiveTag) {
+		return "", false
+	}
+	rest := body[len(directiveTag):]
+	if rest == "" {
 		return "", true
 	}
-	rest, ok := strings.CutPrefix(body, directiveTag+" ")
-	if !ok {
+	r, _ := utf8.DecodeRuneInString(rest)
+	if !unicode.IsSpace(r) {
 		return "", false
 	}
 	return strings.TrimSpace(rest), true
