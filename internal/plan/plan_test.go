@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"strings"
 	"testing"
 
 	"github.com/mickamy/injector/internal/diag"
@@ -241,6 +242,35 @@ type app struct {
 	_, ds := build(t, src, "app", plan.Options{})
 	if !diag.HasErrors(ds) {
 		t.Fatalf("expected conflict error, got %v", ds)
+	}
+}
+
+func TestBuild_DuplicateArgName(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type Cache struct{}
+type Container struct {
+	_  *DB    ` + "`inject:\"arg=primary\"`" + `
+	_  *Cache ` + "`inject:\"arg=primary\"`" + `
+	DB *DB    ` + "`inject:\"\"`" + `
+}
+`
+	_, ds := build(t, src, "Container", plan.Options{})
+	if !diag.HasErrors(ds) {
+		t.Fatalf("expected duplicate input name diagnostic, got %v", ds)
+	}
+
+	var found bool
+	for _, d := range ds {
+		if d.Severity == diag.SeverityError && strings.Contains(d.Message, "duplicate input name") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected diagnostic mentioning %q, got %v", "duplicate input name", ds)
 	}
 }
 

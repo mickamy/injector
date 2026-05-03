@@ -315,7 +315,8 @@ func mergeMust(d ir.MustMode, cliMust bool) bool {
 func buildInputs(c ir.Container) ([]Input, []diag.Diag) {
 	var inputs []Input
 	var diags []diag.Diag
-	seen := map[string]token.Position{}
+	seenTypes := map[string]token.Position{}
+	seenNames := map[string]token.Position{}
 	for _, f := range c.Fields {
 		if f.Role != ir.RoleArg {
 			continue
@@ -325,12 +326,19 @@ func buildInputs(c ir.Container) ([]Input, []diag.Diag) {
 			name = deriveInputName(f.Type)
 		}
 		tk := TypeKey(f.Type)
-		if prev, ok := seen[tk]; ok {
+		if prev, ok := seenTypes[tk]; ok {
 			diags = append(diags, diag.Errorf(f.Pos,
 				"duplicate input type %s (first declared at %s)", TypeString(f.Type), prev))
 			continue
 		}
-		seen[tk] = f.Pos
+		if prev, ok := seenNames[name]; ok {
+			diags = append(diags, diag.Errorf(f.Pos,
+				`duplicate input name %q (first declared at %s); use inject:"arg=..." to disambiguate`,
+				name, prev))
+			continue
+		}
+		seenTypes[tk] = f.Pos
+		seenNames[name] = f.Pos
 		inputs = append(inputs, Input{Name: name, Type: f.Type})
 	}
 	return inputs, diags
