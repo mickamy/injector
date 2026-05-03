@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"strings"
 	"testing"
 
 	"github.com/mickamy/injector/internal/diag"
@@ -178,6 +179,73 @@ func NewContainer(db *DB) *Container {
 `
 	if string(got) != want {
 		t.Errorf("output mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestEmit_NilReturnTypeIsRejected(t *testing.T) {
+	t.Parallel()
+
+	src := `package myapp
+type DB struct{}
+func NewDB() *DB { return nil }
+type Container struct {
+	DB *DB ` + "`inject:\"\"`" + `
+}
+`
+	p := buildPlan(t, src)
+	p.ReturnType = nil // simulate the upstream "no return type" failure mode
+
+	if _, err := emit.Emit("myapp", []plan.Plan{p}); err == nil {
+		t.Fatal("Emit accepted plan with nil ReturnType")
+	}
+}
+
+func TestEmit_NonNilableReturnUsesZeroValue(t *testing.T) {
+	t.Parallel()
+
+	// Return type = value struct (non-nilable). The provider chain must
+	// include at least one (T, error) provider so writeSteps takes the
+	// error branch and writes the zero-value return.
+	src := `package myapp
+type DB struct{}
+type Bag struct{ DB *DB }
+func NewDB() (*DB, error) { return nil, nil }
+func NewBag(db *DB) Bag { return Bag{DB: db} }
+
+//injector:container returns=Bag
+type app struct {
+	B Bag ` + "`inject:\"\"`" + `
+}
+`
+	pkg := loadTestPackage(t, src)
+	cs, dsC := scan.Containers([]*packages.Package{pkg})
+	if diag.HasErrors(dsC) {
+		t.Fatalf("scan.Containers: %v", dsC)
+	}
+	ps, dsP := scan.Providers([]*packages.Package{pkg})
+	if diag.HasErrors(dsP) {
+		t.Fatalf("scan.Providers: %v", dsP)
+	}
+
+	var target ir.Container
+	for _, c := range cs {
+		if c.StructName == "app" {
+			target = c
+			break
+		}
+	}
+	idx := plan.NewIndex(ps)
+	pl, dsB := plan.Build(target, idx, plan.Options{})
+	if diag.HasErrors(dsB) {
+		t.Fatalf("plan.Build: %v", dsB)
+	}
+
+	out, err := emit.Emit("myapp", []plan.Plan{pl})
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if !strings.Contains(string(out), "*new(Bag)") {
+		t.Errorf("expected *new(Bag) zero-value return in error path, got:\n%s", out)
 	}
 }
 

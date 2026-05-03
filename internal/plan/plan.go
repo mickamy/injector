@@ -21,6 +21,15 @@ type Options struct {
 
 // Plan is the resolved sequence of operations needed to construct a single
 // container, plus metadata used by the emit layer.
+//
+// ReturnType is the *declared* return type of the constructor. The emitter
+// always produces &<StructName>{...} as the return expression and relies on
+// Go's assignability rules to fit ReturnType — so when ReturnType differs
+// from *<StructName> (e.g. via inject:"returns" or //injector:container
+// returns=...), *<StructName> must implement (or be identical to)
+// ReturnType. This is also why RoleReturnsOnly fields contribute no Step:
+// their type is recorded for the signature but the value is supplied by
+// the container struct literal itself.
 type Plan struct {
 	Container       ir.Container
 	ConstructorName string

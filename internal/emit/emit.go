@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go/format"
+	"go/types"
 	"io"
 	"strings"
 
@@ -29,6 +30,12 @@ func Emit(packageName string, plans []plan.Plan) ([]byte, error) {
 				"emit: plans span multiple packages: %s vs %s",
 				containerPkg, p.Container.PkgPath,
 			)
+		}
+	}
+	for _, p := range plans {
+		if p.ReturnType == nil {
+			return nil, fmt.Errorf(
+				"emit: plan for %s has no return type", p.Container.StructName)
 		}
 	}
 
@@ -83,7 +90,16 @@ func collectImports(im *Imports, p plan.Plan) {
 	}
 }
 
-// writeContainer emits the constructor (and optional Must variant) for one plan.
+// writeContainer emits the constructor (and optional Must variant) for one
+// plan.
+//
+// The body always builds the value as &<StructName>{...} and then relies on
+// Go's assignability rules to fit the declared ReturnType. This means a
+// caller using inject:"returns" or //injector:container returns=... must
+// ensure that *<StructName> implements (or is identical to) the declared
+// type — typically by giving the container methods that satisfy the target
+// interface. Mismatches are caught by the Go compiler against the generated
+// file rather than diagnosed in plan/emit.
 func writeContainer(w io.Writer, im *Imports, p plan.Plan) error {
 	name := p.ConstructorName
 	structName := p.Container.StructName
@@ -97,7 +113,7 @@ func writeContainer(w io.Writer, im *Imports, p plan.Plan) error {
 		fmt.Fprintf(w, "func %s(%s) %s {\n", name, paramSig, retSig)
 	}
 
-	if err := writeSteps(w, im, p); err != nil {
+	if err := writeSteps(w, im, p, retSig); err != nil {
 		return err
 	}
 
@@ -113,7 +129,14 @@ func writeContainer(w io.Writer, im *Imports, p plan.Plan) error {
 	return nil
 }
 
-func writeSteps(w io.Writer, im *Imports, p plan.Plan) error {
+func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) error {
+	zeroExpr := "nil"
+	if !isNilable(p.ReturnType) {
+		// For non-nilable return types we need an explicit zero value;
+		// *new(T) is a compact and type-safe way to express it.
+		zeroExpr = "*new(" + retSig + ")"
+	}
+
 	for _, s := range p.Steps {
 		switch s.Kind {
 		case plan.StepKindInput:
@@ -130,7 +153,7 @@ func writeSteps(w io.Writer, im *Imports, p plan.Plan) error {
 			if s.Provider.ReturnsError {
 				fmt.Fprintf(w, "\t%s, err := %s(%s)\n", s.VarName, call, strings.Join(args, ", "))
 				fmt.Fprint(w, "\tif err != nil {\n")
-				fmt.Fprint(w, "\t\treturn nil, err\n")
+				fmt.Fprintf(w, "\t\treturn %s, err\n", zeroExpr)
 				fmt.Fprint(w, "\t}\n")
 			} else {
 				fmt.Fprintf(w, "\t%s := %s(%s)\n", s.VarName, call, strings.Join(args, ", "))
@@ -138,6 +161,23 @@ func writeSteps(w io.Writer, im *Imports, p plan.Plan) error {
 		}
 	}
 	return nil
+}
+
+// isNilable reports whether the typed expression `nil` is a valid value of t.
+// This determines whether the constructor's error path can use a bare
+// `return nil, err` or must construct an explicit zero value.
+func isNilable(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	switch tt := t.(type) {
+	case *types.Pointer, *types.Interface, *types.Slice, *types.Map, *types.Chan, *types.Signature:
+		return true
+	case *types.Named:
+		_, isIface := tt.Underlying().(*types.Interface)
+		return isIface
+	}
+	return false
 }
 
 func writeStructLiteral(w io.Writer, p plan.Plan) {
