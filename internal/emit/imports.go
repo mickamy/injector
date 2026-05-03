@@ -144,15 +144,26 @@ func (im *Imports) qualify(p *types.Package) string {
 }
 
 // collectPkgs walks t and returns each named-type package it references.
+//
+// The walk descends through the type shapes that may appear in the generated
+// source: pointers, slices/arrays/maps/channels, signature parameters and
+// results, and named types' type arguments. It deliberately does NOT descend
+// into a *types.Named's Underlying form, nor into *types.Interface methods
+// or *types.Struct fields — those internals are not written verbatim into
+// the generated file (only the named type itself is qualified), so adding
+// their packages would cause "imported and not used" errors. If we ever
+// inline anonymous interface/struct shapes into the output, those cases
+// would need to be added here.
 func collectPkgs(t types.Type) []*types.Package {
 	var out []*types.Package
 	seen := map[*types.Package]struct{}{}
 
 	var walk func(types.Type)
 	walk = func(t types.Type) {
-		switch tt := t.(type) {
-		case nil:
+		if t == nil {
 			return
+		}
+		switch tt := t.(type) {
 		case *types.Named:
 			if obj := tt.Obj(); obj != nil {
 				if pkg := obj.Pkg(); pkg != nil {
