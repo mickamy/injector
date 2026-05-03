@@ -77,6 +77,27 @@ func TestFormatCandidates(t *testing.T) {
 	}
 }
 
+func TestIndex_OwnsCopyOfInput(t *testing.T) {
+	t.Parallel()
+
+	in := []ir.Provider{
+		{PkgPath: "x", PkgName: "x", FuncName: "A"},
+	}
+	idx := plan.NewIndex(in)
+
+	// Mutate the caller's slice after construction.
+	in[0].FuncName = "B"
+
+	got := idx.LookupByRef("x.A")
+	if len(got) != 1 || got[0].FuncName != "A" {
+		t.Errorf("Index reflects caller mutation: got %+v, want FuncName=A", got)
+	}
+
+	if found := idx.LookupByRef("x.B"); len(found) != 0 {
+		t.Errorf("LookupByRef(x.B) returned %d providers, want 0", len(found))
+	}
+}
+
 func TestIndex_All_PreservesOrder(t *testing.T) {
 	t.Parallel()
 

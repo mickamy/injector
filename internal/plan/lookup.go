@@ -9,25 +9,32 @@ import (
 // Index is an indexed view over a set of providers, supporting lookup by
 // fully qualified or short name and by result type.
 //
-// Pointers returned by lookup methods refer to entries owned by the Index;
-// callers must not mutate them.
+// The index owns its own copy of the input providers; pointers returned by
+// lookup methods are stable for the lifetime of the Index regardless of any
+// mutation the caller performs on the input slice.
 type Index struct {
+	storage []ir.Provider // index-owned copy of the input slice
 	all     []*ir.Provider
 	byFull  map[string]*ir.Provider   // pkgPath.FuncName
 	byShort map[string][]*ir.Provider // pkgName.FuncName + bare FuncName
 	byType  map[string][]*ir.Provider // TypeKey(Result)
 }
 
-// NewIndex builds an Index from the given providers. Each entry is copied
-// into the index so that pointer identity is preserved across lookups.
+// NewIndex builds an Index from the given providers. The input slice is
+// copied into index-owned storage so that subsequent caller mutations do not
+// affect the index.
 func NewIndex(providers []ir.Provider) *Index {
+	storage := make([]ir.Provider, len(providers))
+	copy(storage, providers)
+
 	idx := &Index{
-		byFull:  make(map[string]*ir.Provider, len(providers)),
+		storage: storage,
+		byFull:  make(map[string]*ir.Provider, len(storage)),
 		byShort: make(map[string][]*ir.Provider),
 		byType:  make(map[string][]*ir.Provider),
 	}
-	for i := range providers {
-		p := &providers[i]
+	for i := range idx.storage {
+		p := &idx.storage[i]
 		idx.all = append(idx.all, p)
 
 		full := p.PkgPath + "." + p.FuncName
