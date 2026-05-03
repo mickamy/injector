@@ -12,6 +12,7 @@ all: build
 
 build:
 	@echo "Building $(APP_NAME)..."
+	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(APP_NAME) .
 
 install:
