@@ -148,7 +148,10 @@ func (a *App) Run(args []string) int {
 
 		outDir := filepath.Dir(group.containers[0].Pos.Filename)
 		outPath := filepath.Join(outDir, outputFile)
-		if err := os.WriteFile(outPath, out, 0o600); err != nil {
+		// Generated Go source should be readable like the rest of the
+		// package, matching what gofmt/go generate produce by default.
+		//nolint:gosec // generated source is meant to be world-readable
+		if err := os.WriteFile(outPath, out, 0o644); err != nil {
 			fmt.Fprintln(a.Err, err)
 			failed = true
 			continue
