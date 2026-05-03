@@ -22,6 +22,8 @@ linters:
         rules:
           json: snake
           yaml: snake
+  enable:
+    - gomodguard_v2
   disable:
     - cyclop           # Redundant; cognitive complexity is already tracked by gocognit
     - depguard         # Import restrictions are not currently required for this internal architecture
@@ -37,6 +39,7 @@ linters:
     - goconst          # Repeated strings in tests are clearer than abstract constants
     - godot            # Punctuation in comments is a stylistic choice, not a code quality issue
     - gomoddirectives  # Local replace directives are needed for the example module
+    - gomodguard       # Deprecated; use gomodguard_v2 instead
     - ireturn          # Returning interfaces is a valid design pattern in this project's architecture
     - mnd              # "Magic numbers" are often self-explanatory (e.g., status codes, time units)
     - nestif           # Deep nesting is sometimes the most readable way to handle complex logic
