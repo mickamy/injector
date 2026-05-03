@@ -1,4 +1,4 @@
-package scan
+package scan_test
 
 import (
 	"reflect"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mickamy/injector/internal/ir"
+	"github.com/mickamy/injector/internal/scan"
 )
 
 func TestParseDirective(t *testing.T) {
@@ -14,7 +15,7 @@ func TestParseDirective(t *testing.T) {
 	tests := []struct {
 		name     string
 		lines    []string
-		wantPD   ParsedDirective
+		wantPD   scan.ParsedDirective
 		wantErrs []string
 	}{
 		{
@@ -27,88 +28,88 @@ func TestParseDirective(t *testing.T) {
 		{
 			name:   "marker only",
 			lines:  []string{"//injector:container"},
-			wantPD: ParsedDirective{Found: true},
+			wantPD: scan.ParsedDirective{Found: true},
 		},
 		{
 			name:   "marker with leading space",
 			lines:  []string{"// injector:container"},
-			wantPD: ParsedDirective{Found: true},
+			wantPD: scan.ParsedDirective{Found: true},
 		},
 		{
 			name:   "marker with trailing space",
 			lines:  []string{"//injector:container  "},
-			wantPD: ParsedDirective{Found: true},
+			wantPD: scan.ParsedDirective{Found: true},
 		},
 		{
 			name:   "name=",
 			lines:  []string{"//injector:container name=NewFoo"},
-			wantPD: ParsedDirective{Found: true, Name: "NewFoo"},
+			wantPD: scan.ParsedDirective{Found: true, Name: "NewFoo"},
 		},
 		{
 			name:   "returns=",
 			lines:  []string{"//injector:container returns=greeter.Greeter"},
-			wantPD: ParsedDirective{Found: true, ReturnsExpr: "greeter.Greeter"},
+			wantPD: scan.ParsedDirective{Found: true, ReturnsExpr: "greeter.Greeter"},
 		},
 		{
 			name:   "must shorthand",
 			lines:  []string{"//injector:container must"},
-			wantPD: ParsedDirective{Found: true, Must: ir.MustOn},
+			wantPD: scan.ParsedDirective{Found: true, Must: ir.MustOn},
 		},
 		{
 			name:   "must=true",
 			lines:  []string{"//injector:container must=true"},
-			wantPD: ParsedDirective{Found: true, Must: ir.MustOn},
+			wantPD: scan.ParsedDirective{Found: true, Must: ir.MustOn},
 		},
 		{
 			name:   "must=false",
 			lines:  []string{"//injector:container must=false"},
-			wantPD: ParsedDirective{Found: true, Must: ir.MustOff},
+			wantPD: scan.ParsedDirective{Found: true, Must: ir.MustOff},
 		},
 		{
 			name:   "all three",
 			lines:  []string{"//injector:container name=NewFoo returns=foo.Foo must"},
-			wantPD: ParsedDirective{Found: true, Name: "NewFoo", ReturnsExpr: "foo.Foo", Must: ir.MustOn},
+			wantPD: scan.ParsedDirective{Found: true, Name: "NewFoo", ReturnsExpr: "foo.Foo", Must: ir.MustOn},
 		},
 		{
 			name:     "duplicate directive",
 			lines:    []string{"//injector:container name=A", "//injector:container name=B"},
-			wantPD:   ParsedDirective{Found: true, Name: "A"},
+			wantPD:   scan.ParsedDirective{Found: true, Name: "A"},
 			wantErrs: []string{"duplicate //injector:container directive"},
 		},
 		{
 			name:     "unknown key",
 			lines:    []string{"//injector:container xyz=1"},
-			wantPD:   ParsedDirective{Found: true},
+			wantPD:   scan.ParsedDirective{Found: true},
 			wantErrs: []string{`unknown directive key "xyz"`},
 		},
 		{
 			name:     "name without value",
 			lines:    []string{"//injector:container name="},
-			wantPD:   ParsedDirective{Found: true},
+			wantPD:   scan.ParsedDirective{Found: true},
 			wantErrs: []string{"directive name= requires a value"},
 		},
 		{
 			name:     "returns without =",
 			lines:    []string{"//injector:container returns"},
-			wantPD:   ParsedDirective{Found: true},
+			wantPD:   scan.ParsedDirective{Found: true},
 			wantErrs: []string{"directive returns= requires a value"},
 		},
 		{
 			name:     "must invalid value",
 			lines:    []string{"//injector:container must=panic"},
-			wantPD:   ParsedDirective{Found: true},
+			wantPD:   scan.ParsedDirective{Found: true},
 			wantErrs: []string{`directive must= must be true or false, got "panic"`},
 		},
 		{
 			name:     "name twice",
 			lines:    []string{"//injector:container name=A name=B"},
-			wantPD:   ParsedDirective{Found: true, Name: "A"},
+			wantPD:   scan.ParsedDirective{Found: true, Name: "A"},
 			wantErrs: []string{"directive name= specified more than once"},
 		},
 		{
 			name:   "non-injector tag is ignored",
 			lines:  []string{"//go:generate something", "//injector:provider foo", "// injector:container name=X"},
-			wantPD: ParsedDirective{Found: true, Name: "X"},
+			wantPD: scan.ParsedDirective{Found: true, Name: "X"},
 		},
 	}
 
@@ -116,7 +117,7 @@ func TestParseDirective(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotPD, gotErrs := ParseDirective(tt.lines)
+			gotPD, gotErrs := scan.ParseDirective(tt.lines)
 			if !reflect.DeepEqual(gotPD, tt.wantPD) {
 				t.Errorf("ParsedDirective = %+v, want %+v", gotPD, tt.wantPD)
 			}

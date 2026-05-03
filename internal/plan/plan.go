@@ -305,6 +305,8 @@ func mergeMust(d ir.MustMode, cliMust bool) bool {
 		return true
 	case ir.MustOff:
 		return false
+	case ir.MustUnset:
+		fallthrough
 	default:
 		return cliMust
 	}
@@ -440,7 +442,7 @@ func lowerFirst(s string) string {
 	if i < n && i > 1 {
 		i--
 	}
-	for j := 0; j < i; j++ {
+	for j := range i {
 		runes[j] = unicode.ToLower(runes[j])
 	}
 	return string(runes)

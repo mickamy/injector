@@ -1,4 +1,4 @@
-package scan
+package scan_test
 
 import (
 	"slices"
@@ -7,6 +7,7 @@ import (
 	"github.com/mickamy/injector/internal/diag"
 	"github.com/mickamy/injector/internal/ir"
 	"github.com/mickamy/injector/internal/packages"
+	"github.com/mickamy/injector/internal/scan"
 )
 
 func TestProviders_VariousShapes(t *testing.T) {
@@ -25,14 +26,14 @@ func NewGreeter() Greeter { return nil }
 func ReturnsString() string { return "" }
 func ReturnsErrorOnly() error { return nil }
 func TwoResultsNoError() (string, int) { return "", 0 }
-func ThreeResults() (*DB, *DB, error) { return nil, nil, nil }
+func ThreeResults() (*DB, *DB, error) { var a, b *DB; return a, b, nil }
 func NoResults() {}
 
 // Methods are not providers.
 func (d *DB) NewSelf() *DB { return d }
 `
 	pkg := loadTestPackage(t, src)
-	ps, ds := Providers([]*packages.Package{pkg})
+	ps, ds := scan.Providers([]*packages.Package{pkg})
 
 	if diag.HasErrors(ds) {
 		t.Fatalf("unexpected error diags: %v", ds)
@@ -72,7 +73,7 @@ type DB struct{}
 func NewDB() *DB { return nil }
 `
 	pkg := loadTestPackage(t, src)
-	ps, ds := Providers([]*packages.Package{pkg})
+	ps, ds := scan.Providers([]*packages.Package{pkg})
 
 	if diag.HasErrors(ds) {
 		t.Fatalf("unexpected error diags: %v", ds)
@@ -94,7 +95,7 @@ func NewDB() *DB { return nil }
 func NewUser(db *DB, tag string) *User { return nil }
 `
 	pkg := loadTestPackage(t, src)
-	ps, _ := Providers([]*packages.Package{pkg})
+	ps, _ := scan.Providers([]*packages.Package{pkg})
 
 	var newUser ir.Provider
 	for _, p := range ps {

@@ -163,8 +163,8 @@ func collectPkgs(t types.Type) []*types.Package {
 				}
 			}
 			if ta := tt.TypeArgs(); ta != nil {
-				for i := 0; i < ta.Len(); i++ {
-					walk(ta.At(i))
+				for arg := range ta.Types() {
+					walk(arg)
 				}
 			}
 		case *types.Pointer:
@@ -180,13 +180,13 @@ func collectPkgs(t types.Type) []*types.Package {
 			walk(tt.Elem())
 		case *types.Signature:
 			if params := tt.Params(); params != nil {
-				for i := 0; i < params.Len(); i++ {
-					walk(params.At(i).Type())
+				for v := range params.Variables() {
+					walk(v.Type())
 				}
 			}
 			if results := tt.Results(); results != nil {
-				for i := 0; i < results.Len(); i++ {
-					walk(results.At(i).Type())
+				for v := range results.Variables() {
+					walk(v.Type())
 				}
 			}
 		}

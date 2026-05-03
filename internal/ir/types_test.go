@@ -1,6 +1,10 @@
-package ir
+package ir_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mickamy/injector/internal/ir"
+)
 
 func TestProviderRef_HasRef(t *testing.T) {
 	t.Parallel()
@@ -19,7 +23,7 @@ func TestProviderRef_HasRef(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			r := ProviderRef{Raw: tt.raw}
+			r := ir.ProviderRef{Raw: tt.raw}
 			if got := r.HasRef(); got != tt.want {
 				t.Errorf("HasRef() = %v, want %v", got, tt.want)
 			}

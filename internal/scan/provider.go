@@ -35,6 +35,11 @@ func Providers(pkgs []*packages.Package) ([]ir.Provider, []diag.Diag) {
 	return providers, diags
 }
 
+// providersInPackage returns the provider list and a slice of diagnostics for
+// the given package. The diagnostics slot is currently always empty but kept
+// to mirror Containers' signature for symmetry and future use.
+//
+//nolint:unparam // diagnostics are part of the contract even when unused today
 func providersInPackage(pkg *packages.Package) ([]ir.Provider, []diag.Diag) {
 	var (
 		providers []ir.Provider
@@ -131,8 +136,7 @@ func paramTypes(sig *types.Signature) []types.Type {
 		return nil
 	}
 	out := make([]types.Type, 0, tup.Len())
-	for i := 0; i < tup.Len(); i++ {
-		v := tup.At(i)
+	for v := range tup.Variables() {
 		if v == nil {
 			continue
 		}

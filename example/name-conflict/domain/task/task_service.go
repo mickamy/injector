@@ -22,7 +22,10 @@ func (s service) Create(userID string, task Task) error {
 	}
 
 	task.UserID = u.ID
-	return s.taskRepository.Create(task)
+	if err := s.taskRepository.Create(task); err != nil {
+		return fmt.Errorf("create task: %w", err)
+	}
+	return nil
 }
 
 func NewService(taskRepository Repository, userRepository user.Repository) Service {

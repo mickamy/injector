@@ -1,4 +1,4 @@
-package emit
+package emit_test
 
 import (
 	"go/ast"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mickamy/injector/internal/diag"
+	"github.com/mickamy/injector/internal/emit"
 	"github.com/mickamy/injector/internal/ir"
 	"github.com/mickamy/injector/internal/packages"
 	"github.com/mickamy/injector/internal/plan"
@@ -27,9 +28,9 @@ type Container struct {
 	User *User ` + "`inject:\"\"`" + `
 }
 `
-	p := buildPlan(t, src, "Container", plan.Options{})
+	p := buildPlan(t, src)
 
-	got, err := Emit("myapp", []plan.Plan{p})
+	got, err := emit.Emit("myapp", []plan.Plan{p})
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
@@ -65,9 +66,9 @@ type Container struct {
 	User *User ` + "`inject:\"\"`" + `
 }
 `
-	p := buildPlan(t, src, "Container", plan.Options{})
+	p := buildPlan(t, src)
 
-	got, err := Emit("myapp", []plan.Plan{p})
+	got, err := emit.Emit("myapp", []plan.Plan{p})
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
@@ -106,9 +107,9 @@ type Container struct {
 	DB *DB ` + "`inject:\"\"`" + `
 }
 `
-	p := buildPlan(t, src, "Container", plan.Options{})
+	p := buildPlan(t, src)
 
-	got, err := Emit("myapp", []plan.Plan{p})
+	got, err := emit.Emit("myapp", []plan.Plan{p})
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
@@ -155,9 +156,9 @@ type Container struct {
 	User *User ` + "`inject:\"\"`" + `
 }
 `
-	p := buildPlan(t, src, "Container", plan.Options{})
+	p := buildPlan(t, src)
 
-	got, err := Emit("myapp", []plan.Plan{p})
+	got, err := emit.Emit("myapp", []plan.Plan{p})
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
@@ -192,8 +193,8 @@ type Container struct {
 	User *User ` + "`inject:\"\"`" + `
 }
 `
-	p := buildPlan(t, src, "Container", plan.Options{})
-	out, err := Emit("myapp", []plan.Plan{p})
+	p := buildPlan(t, src)
+	out, err := emit.Emit("myapp", []plan.Plan{p})
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
@@ -216,9 +217,12 @@ type Container struct {
 	}
 }
 
-// buildPlan runs scan + plan on src and returns a plan for the named container.
-func buildPlan(t *testing.T, src, containerName string, opts plan.Options) plan.Plan {
+// buildPlan runs scan + plan on src and returns the plan for the
+// "Container" struct. Tests in this file all use that conventional name and
+// default plan options.
+func buildPlan(t *testing.T, src string) plan.Plan {
 	t.Helper()
+	const containerName = "Container"
 	pkg := loadTestPackage(t, src)
 
 	cs, dsC := scan.Containers([]*packages.Package{pkg})
@@ -242,7 +246,7 @@ func buildPlan(t *testing.T, src, containerName string, opts plan.Options) plan.
 	}
 
 	idx := plan.NewIndex(ps)
-	pl, dsB := plan.Build(target, idx, opts)
+	pl, dsB := plan.Build(target, idx, plan.Options{})
 	if diag.HasErrors(dsB) {
 		t.Fatalf("plan.Build: %v", dsB)
 	}

@@ -2,6 +2,7 @@ package emit
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"go/format"
 	"io"
@@ -15,10 +16,10 @@ import (
 // formatted with go/format before returning.
 func Emit(packageName string, plans []plan.Plan) ([]byte, error) {
 	if packageName == "" {
-		return nil, fmt.Errorf("emit: package name is required")
+		return nil, errors.New("emit: package name is required")
 	}
 	if len(plans) == 0 {
-		return nil, fmt.Errorf("emit: no plans to emit")
+		return nil, errors.New("emit: no plans to emit")
 	}
 
 	containerPkg := plans[0].Container.PkgPath
@@ -155,7 +156,9 @@ func writeMustVariant(w io.Writer, im *Imports, p plan.Plan) {
 	paramSig := formatParams(im, p.Inputs)
 	retSig := im.QualifyType(p.ReturnType)
 
-	fmt.Fprintf(w, "// %s initializes dependencies and constructs %s or panics on failure.\n", name, p.Container.StructName)
+	fmt.Fprintf(w,
+		"// %s initializes dependencies and constructs %s or panics on failure.\n",
+		name, p.Container.StructName)
 	fmt.Fprintf(w, "func %s(%s) %s {\n", name, paramSig, retSig)
 	if p.ReturnsError {
 		fmt.Fprintf(w, "\tv, err := %s(%s)\n", p.ConstructorName, formatArgs(p.Inputs))

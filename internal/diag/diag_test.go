@@ -1,9 +1,11 @@
-package diag
+package diag_test
 
 import (
 	"go/token"
 	"strings"
 	"testing"
+
+	"github.com/mickamy/injector/internal/diag"
 )
 
 func TestSeverity_String(t *testing.T) {
@@ -11,13 +13,13 @@ func TestSeverity_String(t *testing.T) {
 
 	tests := []struct {
 		name string
-		sev  Severity
+		sev  diag.Severity
 		want string
 	}{
-		{name: "error", sev: SeverityError, want: "error"},
-		{name: "warning", sev: SeverityWarning, want: "warning"},
-		{name: "info", sev: SeverityInfo, want: "info"},
-		{name: "unknown", sev: Severity(99), want: "unknown"},
+		{name: "error", sev: diag.SeverityError, want: "error"},
+		{name: "warning", sev: diag.SeverityWarning, want: "warning"},
+		{name: "info", sev: diag.SeverityInfo, want: "info"},
+		{name: "unknown", sev: diag.Severity(99), want: "unknown"},
 	}
 
 	for _, tt := range tests {
@@ -36,13 +38,13 @@ func TestDiag_String(t *testing.T) {
 
 	tests := []struct {
 		name string
-		diag Diag
+		d    diag.Diag
 		want string
 	}{
 		{
 			name: "error with position",
-			diag: Diag{
-				Severity: SeverityError,
+			d: diag.Diag{
+				Severity: diag.SeverityError,
 				Pos:      token.Position{Filename: "main.go", Line: 10, Column: 5},
 				Message:  "something went wrong",
 			},
@@ -50,16 +52,16 @@ func TestDiag_String(t *testing.T) {
 		},
 		{
 			name: "warning without position",
-			diag: Diag{
-				Severity: SeverityWarning,
+			d: diag.Diag{
+				Severity: diag.SeverityWarning,
 				Message:  "be careful",
 			},
 			want: "warning: be careful",
 		},
 		{
 			name: "with hints",
-			diag: Diag{
-				Severity: SeverityError,
+			d: diag.Diag{
+				Severity: diag.SeverityError,
 				Pos:      token.Position{Filename: "x.go", Line: 1, Column: 1},
 				Message:  "no provider for foo.Bar",
 				Hints: []string{
@@ -81,7 +83,7 @@ func TestDiag_String(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := tt.diag.String(); got != tt.want {
+			if got := tt.d.String(); got != tt.want {
 				t.Errorf("String() = %q, want %q", got, tt.want)
 			}
 		})
@@ -92,9 +94,9 @@ func TestErrorf(t *testing.T) {
 	t.Parallel()
 
 	pos := token.Position{Filename: "x.go", Line: 1, Column: 2}
-	d := Errorf(pos, "value=%d", 42)
+	d := diag.Errorf(pos, "value=%d", 42)
 
-	if d.Severity != SeverityError {
+	if d.Severity != diag.SeverityError {
 		t.Errorf("Severity = %v, want SeverityError", d.Severity)
 	}
 	if d.Pos != pos {
@@ -108,7 +110,7 @@ func TestErrorf(t *testing.T) {
 func TestDiag_WithHints_DoesNotMutateReceiver(t *testing.T) {
 	t.Parallel()
 
-	base := Diag{Hints: []string{"a"}}
+	base := diag.Diag{Hints: []string{"a"}}
 	appended := base.WithHints("b", "c")
 
 	if got, want := len(base.Hints), 1; got != want {
@@ -122,7 +124,7 @@ func TestDiag_WithHints_DoesNotMutateReceiver(t *testing.T) {
 func TestDiag_WithHints_NoArgsReturnsSame(t *testing.T) {
 	t.Parallel()
 
-	base := Diag{Message: "x"}
+	base := diag.Diag{Message: "x"}
 	got := base.WithHints()
 
 	if got.Message != base.Message || len(got.Hints) != 0 {
@@ -135,20 +137,20 @@ func TestHasErrors(t *testing.T) {
 
 	tests := []struct {
 		name string
-		ds   []Diag
+		ds   []diag.Diag
 		want bool
 	}{
 		{name: "empty", ds: nil, want: false},
-		{name: "warning only", ds: []Diag{{Severity: SeverityWarning}}, want: false},
-		{name: "info only", ds: []Diag{{Severity: SeverityInfo}}, want: false},
-		{name: "has error", ds: []Diag{{Severity: SeverityWarning}, {Severity: SeverityError}}, want: true},
+		{name: "warning only", ds: []diag.Diag{{Severity: diag.SeverityWarning}}, want: false},
+		{name: "info only", ds: []diag.Diag{{Severity: diag.SeverityInfo}}, want: false},
+		{name: "has error", ds: []diag.Diag{{Severity: diag.SeverityWarning}, {Severity: diag.SeverityError}}, want: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := HasErrors(tt.ds); got != tt.want {
+			if got := diag.HasErrors(tt.ds); got != tt.want {
 				t.Errorf("HasErrors() = %v, want %v", got, tt.want)
 			}
 		})
@@ -160,20 +162,20 @@ func TestFormat(t *testing.T) {
 
 	tests := []struct {
 		name string
-		ds   []Diag
+		ds   []diag.Diag
 		want string
 	}{
 		{name: "empty", ds: nil, want: ""},
 		{
 			name: "single",
-			ds:   []Diag{{Severity: SeverityError, Message: "boom"}},
+			ds:   []diag.Diag{{Severity: diag.SeverityError, Message: "boom"}},
 			want: "error: boom",
 		},
 		{
 			name: "multiple",
-			ds: []Diag{
-				{Severity: SeverityError, Message: "first"},
-				{Severity: SeverityWarning, Message: "second"},
+			ds: []diag.Diag{
+				{Severity: diag.SeverityError, Message: "first"},
+				{Severity: diag.SeverityWarning, Message: "second"},
 			},
 			want: "error: first\nwarning: second",
 		},
@@ -183,7 +185,7 @@ func TestFormat(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := Format(tt.ds); got != tt.want {
+			if got := diag.Format(tt.ds); got != tt.want {
 				t.Errorf("Format() = %q, want %q", got, tt.want)
 			}
 		})

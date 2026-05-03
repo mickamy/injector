@@ -1,4 +1,4 @@
-package emit
+package emit_test
 
 import (
 	"go/ast"
@@ -8,13 +8,14 @@ import (
 	"go/types"
 	"testing"
 
+	"github.com/mickamy/injector/internal/emit"
 	"github.com/mickamy/injector/internal/ir"
 )
 
 func TestImports_QualifyProvider_SamePackage(t *testing.T) {
 	t.Parallel()
 
-	im := New("github.com/me/app")
+	im := emit.New("github.com/me/app")
 	p := &ir.Provider{PkgPath: "github.com/me/app", PkgName: "app", FuncName: "NewFoo"}
 	if got := im.QualifyProvider(p); got != "NewFoo" {
 		t.Errorf("Qualify = %q, want NewFoo", got)
@@ -27,7 +28,7 @@ func TestImports_QualifyProvider_SamePackage(t *testing.T) {
 func TestImports_QualifyProvider_DifferentPackage(t *testing.T) {
 	t.Parallel()
 
-	im := New("github.com/me/app")
+	im := emit.New("github.com/me/app")
 	p := &ir.Provider{PkgPath: "github.com/me/foo", PkgName: "foo", FuncName: "NewBar"}
 	im.AddProvider(p)
 
@@ -44,7 +45,7 @@ func TestImports_QualifyProvider_DifferentPackage(t *testing.T) {
 func TestImports_AliasCollision(t *testing.T) {
 	t.Parallel()
 
-	im := New("github.com/me/app")
+	im := emit.New("github.com/me/app")
 	p1 := &ir.Provider{PkgPath: "github.com/x/foo", PkgName: "foo", FuncName: "A"}
 	p2 := &ir.Provider{PkgPath: "github.com/y/foo", PkgName: "foo", FuncName: "B"}
 
@@ -73,7 +74,7 @@ func TestImports_AliasCollision(t *testing.T) {
 func TestImports_ReservedAlias(t *testing.T) {
 	t.Parallel()
 
-	im := New("github.com/me/app", "log")
+	im := emit.New("github.com/me/app", "log")
 	p := &ir.Provider{PkgPath: "github.com/me/log", PkgName: "log", FuncName: "Setup"}
 	im.AddProvider(p)
 	if got := im.QualifyProvider(p); got != "log2.Setup" {
@@ -114,13 +115,16 @@ type Foo struct {
 	if fooObj == nil {
 		t.Fatal("Foo not found")
 	}
-	st := fooObj.Type().Underlying().(*types.Struct)
+	st, ok := fooObj.Type().Underlying().(*types.Struct)
+	if !ok {
+		t.Fatalf("Foo is not a struct, got %T", fooObj.Type().Underlying())
+	}
 	if st.NumFields() == 0 {
 		t.Fatal("Foo has no fields")
 	}
 	readerType := st.Field(0).Type() // io.Reader
 
-	im := New("myapp")
+	im := emit.New("myapp")
 	im.AddType(readerType)
 
 	es := im.Sorted()
@@ -156,7 +160,7 @@ type Foo struct{}
 
 	fooType := pkg.Scope().Lookup("Foo").Type()
 
-	im := New("myapp")
+	im := emit.New("myapp")
 	im.AddType(fooType)
 
 	if entries := im.Sorted(); len(entries) != 0 {

@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -57,7 +58,7 @@ func ParseTag(value string) (ParsedTag, error) {
 	switch key {
 	case "with":
 		if !hasEq || val == "" {
-			return ParsedTag{}, fmt.Errorf(`inject:"with=..." requires a provider reference`)
+			return ParsedTag{}, errors.New(`inject:"with=..." requires a provider reference`)
 		}
 		return ParsedTag{Kind: TagWith, With: val}, nil
 	case "arg":
@@ -65,12 +66,12 @@ func ParseTag(value string) (ParsedTag, error) {
 			return ParsedTag{Kind: TagArg}, nil
 		}
 		if val == "" {
-			return ParsedTag{}, fmt.Errorf(`inject:"arg=..." requires a name`)
+			return ParsedTag{}, errors.New(`inject:"arg=..." requires a name`)
 		}
 		return ParsedTag{Kind: TagArg, ArgName: val}, nil
 	case "returns":
 		if hasEq {
-			return ParsedTag{}, fmt.Errorf(`inject:"returns" does not take a value`)
+			return ParsedTag{}, errors.New(`inject:"returns" does not take a value`)
 		}
 		return ParsedTag{Kind: TagReturns}, nil
 	default:

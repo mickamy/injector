@@ -1,9 +1,10 @@
-package plan
+package plan_test
 
 import (
 	"testing"
 
 	"github.com/mickamy/injector/internal/ir"
+	"github.com/mickamy/injector/internal/plan"
 )
 
 func TestIndex_LookupByRef(t *testing.T) {
@@ -13,7 +14,7 @@ func TestIndex_LookupByRef(t *testing.T) {
 	b := ir.Provider{PkgPath: "github.com/example/foo2", PkgName: "foo", FuncName: "NewBar"}
 	c := ir.Provider{PkgPath: "github.com/example/baz", PkgName: "baz", FuncName: "NewBaz"}
 
-	idx := NewIndex([]ir.Provider{a, b, c})
+	idx := plan.NewIndex([]ir.Provider{a, b, c})
 
 	tests := []struct {
 		name string
@@ -43,17 +44,17 @@ func TestIndex_LookupByRef(t *testing.T) {
 func TestProviderName(t *testing.T) {
 	t.Parallel()
 
-	if got := ProviderName(nil); got != "<nil>" {
+	if got := plan.ProviderName(nil); got != "<nil>" {
 		t.Errorf("ProviderName(nil) = %q, want <nil>", got)
 	}
 
 	p := ir.Provider{PkgPath: "github.com/x/y", FuncName: "F"}
-	if got, want := ProviderName(&p), "github.com/x/y.F"; got != want {
+	if got, want := plan.ProviderName(&p), "github.com/x/y.F"; got != want {
 		t.Errorf("ProviderName = %q, want %q", got, want)
 	}
 
 	p2 := ir.Provider{FuncName: "F"}
-	if got, want := ProviderName(&p2), "F"; got != want {
+	if got, want := plan.ProviderName(&p2), "F"; got != want {
 		t.Errorf("ProviderName(no pkg) = %q, want %q", got, want)
 	}
 }
@@ -64,7 +65,7 @@ func TestFormatCandidates(t *testing.T) {
 	a := ir.Provider{PkgPath: "x", FuncName: "A"}
 	b := ir.Provider{PkgPath: "y", FuncName: "B"}
 
-	got := FormatCandidates([]*ir.Provider{&a, &b})
+	got := plan.FormatCandidates([]*ir.Provider{&a, &b})
 	if len(got) != 2 {
 		t.Fatalf("got %d lines, want 2", len(got))
 	}
@@ -84,7 +85,7 @@ func TestIndex_All_PreservesOrder(t *testing.T) {
 		{PkgPath: "b", FuncName: "Y"},
 		{PkgPath: "c", FuncName: "Z"},
 	}
-	idx := NewIndex(in)
+	idx := plan.NewIndex(in)
 
 	got := idx.All()
 	if len(got) != len(in) {

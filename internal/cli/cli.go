@@ -148,7 +148,7 @@ func (a *App) Run(args []string) int {
 
 		outDir := filepath.Dir(group.containers[0].Pos.Filename)
 		outPath := filepath.Join(outDir, outputFile)
-		if err := os.WriteFile(outPath, out, 0644); err != nil {
+		if err := os.WriteFile(outPath, out, 0o600); err != nil {
 			fmt.Fprintln(a.Err, err)
 			failed = true
 			continue

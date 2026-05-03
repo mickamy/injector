@@ -1,4 +1,4 @@
-package plan
+package plan_test
 
 import (
 	"go/ast"
@@ -11,6 +11,7 @@ import (
 	"github.com/mickamy/injector/internal/diag"
 	"github.com/mickamy/injector/internal/ir"
 	"github.com/mickamy/injector/internal/packages"
+	"github.com/mickamy/injector/internal/plan"
 	"github.com/mickamy/injector/internal/scan"
 )
 
@@ -26,7 +27,7 @@ type Container struct {
 	User *User ` + "`inject:\"\"`" + `
 }
 `
-	p, _ := mustBuild(t, src, "Container", Options{})
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
 
 	if got, want := p.ConstructorName, "NewContainer"; got != want {
 		t.Errorf("ConstructorName = %q, want %q", got, want)
@@ -58,7 +59,7 @@ type Container struct {
 	DB *DB ` + "`inject:\"\"`" + `
 }
 `
-	p, _ := mustBuild(t, src, "Container", Options{})
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
 	if !p.ReturnsError {
 		t.Errorf("ReturnsError = false, want true")
 	}
@@ -76,14 +77,13 @@ type Container struct {
 	User *User ` + "`inject:\"\"`" + `
 }
 `
-	p, _ := mustBuild(t, src, "Container", Options{})
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
 
 	if len(p.Inputs) != 1 || p.Inputs[0].Name != "db" {
 		t.Errorf("inputs = %+v", p.Inputs)
 	}
 
-	// The first step should be an Input (consumed by NewUser).
-	if p.Steps[0].Kind != StepKindInput {
+	if p.Steps[0].Kind != plan.StepKindInput {
 		t.Errorf("step[0].Kind = %v, want StepKindInput", p.Steps[0].Kind)
 	}
 }
@@ -99,7 +99,7 @@ type Container struct {
 	DB *DB ` + "`inject:\"with=NewUserish\"`" + `
 }
 `
-	p, _ := mustBuild(t, src, "Container", Options{})
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
 
 	if len(p.Inputs) != 1 || p.Inputs[0].Name != "primary" {
 		t.Errorf("inputs = %+v, want name=primary", p.Inputs)
@@ -120,10 +120,8 @@ type Container struct {
 	User *User ` + "`inject:\"\"`" + `
 }
 `
-	p, _ := mustBuild(t, src, "Container", Options{})
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
 
-	// NewUser should be wired with the override, so NewWriter must appear
-	// before NewUser in the step list.
 	var sawWriter bool
 	for _, s := range p.Steps {
 		if s.Provider == nil {
@@ -156,7 +154,7 @@ type Container struct {
 	DB *DB ` + "`inject:\"\"`" + `
 }
 `
-	p, ds := build(t, src, "Container", Options{})
+	p, ds := build(t, src, "Container", plan.Options{})
 	if !diag.HasErrors(ds) {
 		t.Fatalf("expected ambiguity error, got plan=%+v diags=%v", p, ds)
 	}
@@ -171,7 +169,7 @@ type Container struct {
 	DB *DB ` + "`inject:\"\"`" + `
 }
 `
-	p, ds := build(t, src, "Container", Options{})
+	p, ds := build(t, src, "Container", plan.Options{})
 	if !diag.HasErrors(ds) {
 		t.Fatalf("expected missing provider error, got plan=%+v diags=%v", p, ds)
 	}
@@ -191,11 +189,11 @@ type app struct {
 	G *greeterImpl ` + "`inject:\"\"`" + `
 }
 `
-	p, _ := mustBuild(t, src, "app", Options{})
+	p, _ := mustBuild(t, src, "app", plan.Options{})
 	if p.ReturnType == nil {
 		t.Fatal("ReturnType is nil")
 	}
-	if got := TypeString(p.ReturnType); got != "test.Greeter" {
+	if got := plan.TypeString(p.ReturnType); got != "test.Greeter" {
 		t.Errorf("ReturnType = %s, want test.Greeter", got)
 	}
 }
@@ -213,11 +211,11 @@ type app struct {
 	G *greeterImpl ` + "`inject:\"returns\"`" + `
 }
 `
-	p, _ := mustBuild(t, src, "app", Options{})
+	p, _ := mustBuild(t, src, "app", plan.Options{})
 	if p.ReturnType == nil {
 		t.Fatal("ReturnType is nil")
 	}
-	if got := TypeString(p.ReturnType); got != "*test.greeterImpl" {
+	if got := plan.TypeString(p.ReturnType); got != "*test.greeterImpl" {
 		t.Errorf("ReturnType = %s, want *test.greeterImpl", got)
 	}
 	if len(p.Outputs) != 1 || p.Outputs[0].FieldName != "G" {
@@ -240,7 +238,7 @@ type app struct {
 	G *greeterImpl  ` + "`inject:\"\"`" + `
 }
 `
-	_, ds := build(t, src, "app", Options{})
+	_, ds := build(t, src, "app", plan.Options{})
 	if !diag.HasErrors(ds) {
 		t.Fatalf("expected conflict error, got %v", ds)
 	}
@@ -250,10 +248,10 @@ func TestBuild_MustModes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		src     string
-		opts    Options
-		wantOn  bool
+		name   string
+		src    string
+		opts   plan.Options
+		wantOn bool
 	}{
 		{
 			name: "no directive, cli off",
@@ -261,7 +259,7 @@ func TestBuild_MustModes(t *testing.T) {
 type Container struct { X X ` + "`inject:\"\"`" + ` }
 type X struct{}
 func NewX() X { return X{} }`,
-			opts:   Options{Must: false},
+			opts:   plan.Options{Must: false},
 			wantOn: false,
 		},
 		{
@@ -270,7 +268,7 @@ func NewX() X { return X{} }`,
 type Container struct { X X ` + "`inject:\"\"`" + ` }
 type X struct{}
 func NewX() X { return X{} }`,
-			opts:   Options{Must: true},
+			opts:   plan.Options{Must: true},
 			wantOn: true,
 		},
 		{
@@ -280,7 +278,7 @@ func NewX() X { return X{} }`,
 type Container struct { X X ` + "`inject:\"\"`" + ` }
 type X struct{}
 func NewX() X { return X{} }`,
-			opts:   Options{Must: false},
+			opts:   plan.Options{Must: false},
 			wantOn: true,
 		},
 		{
@@ -290,7 +288,7 @@ func NewX() X { return X{} }`,
 type Container struct { X X ` + "`inject:\"\"`" + ` }
 type X struct{}
 func NewX() X { return X{} }`,
-			opts:   Options{Must: true},
+			opts:   plan.Options{Must: true},
 			wantOn: false,
 		},
 	}
@@ -308,7 +306,7 @@ func NewX() X { return X{} }`,
 }
 
 // build runs scan + plan on src and returns the plan plus all diagnostics.
-func build(t *testing.T, src, containerName string, opts Options) (Plan, []diag.Diag) {
+func build(t *testing.T, src, containerName string, opts plan.Options) (plan.Plan, []diag.Diag) {
 	t.Helper()
 	pkg := loadTestPackage(t, src)
 
@@ -332,20 +330,20 @@ func build(t *testing.T, src, containerName string, opts Options) (Plan, []diag.
 		t.Fatalf("container %q not found in scan results", containerName)
 	}
 
-	idx := NewIndex(ps)
-	plan, dsB := Build(target, idx, opts)
-	return plan, dsB
+	idx := plan.NewIndex(ps)
+	pl, dsB := plan.Build(target, idx, opts)
+	return pl, dsB
 }
 
 // mustBuild is like build but fails the test if any error diagnostic is
 // produced.
-func mustBuild(t *testing.T, src, containerName string, opts Options) (Plan, []diag.Diag) {
+func mustBuild(t *testing.T, src, containerName string, opts plan.Options) (plan.Plan, []diag.Diag) {
 	t.Helper()
-	plan, ds := build(t, src, containerName, opts)
+	pl, ds := build(t, src, containerName, opts)
 	if diag.HasErrors(ds) {
 		t.Fatalf("Build returned errors: %v", ds)
 	}
-	return plan, ds
+	return pl, ds
 }
 
 // loadTestPackage parses and type-checks a self-contained Go source string.

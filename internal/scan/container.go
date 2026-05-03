@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -202,6 +203,8 @@ func decideRole(fieldName string, pt ParsedTag, pos token.Position) (ir.Role, *d
 		}
 		return ir.RoleOut, nil
 
+	case TagInvalid:
+		fallthrough
 	default:
 		d := diag.Errorf(pos, "internal: unrecognized inject tag form")
 		return 0, &d
@@ -269,14 +272,14 @@ func buildDirective(pd ParsedDirective, pkg *packages.Package, pos token.Positio
 // directive uses references the container package can see.
 func resolveTypeExpr(pkg *packages.Package, expr string) (types.Type, error) {
 	if pkg.Types == nil || pkg.Fset == nil {
-		return nil, fmt.Errorf("package types or fset unavailable")
+		return nil, errors.New("package types or fset unavailable")
 	}
 	tv, err := types.Eval(pkg.Fset, pkg.Types, token.NoPos, expr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("types.Eval: %w", err)
 	}
 	if !tv.IsType() {
-		return nil, fmt.Errorf("expression is not a type")
+		return nil, errors.New("expression is not a type")
 	}
 	return tv.Type, nil
 }

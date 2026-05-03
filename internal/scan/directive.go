@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -54,7 +55,7 @@ func ParseDirective(commentLines []string) (ParsedDirective, []string) {
 		}
 		pd.Found = true
 
-		for _, tok := range strings.Fields(rest) {
+		for tok := range strings.FieldsSeq(rest) {
 			if err := applyDirectiveToken(&pd, tok); err != nil {
 				errs = append(errs, err.Error())
 			}
@@ -98,23 +99,23 @@ func applyDirectiveToken(pd *ParsedDirective, tok string) error {
 	switch key {
 	case "name":
 		if !hasEq || value == "" {
-			return fmt.Errorf("directive name= requires a value")
+			return errors.New("directive name= requires a value")
 		}
 		if pd.Name != "" {
-			return fmt.Errorf("directive name= specified more than once")
+			return errors.New("directive name= specified more than once")
 		}
 		pd.Name = value
 	case "returns":
 		if !hasEq || value == "" {
-			return fmt.Errorf("directive returns= requires a value")
+			return errors.New("directive returns= requires a value")
 		}
 		if pd.ReturnsExpr != "" {
-			return fmt.Errorf("directive returns= specified more than once")
+			return errors.New("directive returns= specified more than once")
 		}
 		pd.ReturnsExpr = value
 	case "must":
 		if pd.Must != ir.MustUnset {
-			return fmt.Errorf("directive must specified more than once")
+			return errors.New("directive must specified more than once")
 		}
 		if !hasEq {
 			pd.Must = ir.MustOn
