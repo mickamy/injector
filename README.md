@@ -117,6 +117,8 @@ func NewContainer() *Container {
 | `inject:"returns"` | exported / unexported | output that also declares the container's return type |
 | `inject:"arg"` | `_` | constructor input parameter |
 | `inject:"arg=name"` | `_` | constructor input with explicit name |
+| `inject:"arg"` | exported / unexported | constructor input parameter whose value is also stored in the named field |
+| `inject:"arg=name"` | exported / unexported | same, with explicit parameter name |
 | `inject:"with=Foo"` | `_` | override the provider for this type |
 | `inject:"returns"` | `_` | declare return type only (no field stored) |
 | `inject:"embed"` | `_` | constructor input whose exported fields are usable as resolution sources |
