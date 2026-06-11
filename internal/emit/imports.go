@@ -81,6 +81,19 @@ func (im *Imports) QualifyProvider(p *ir.Provider) string {
 	return alias + "." + p.FuncName
 }
 
+// Reserved returns every identifier the import tracker is currently
+// holding off-limits: alias names assigned to imported packages plus any
+// pre-claimed reserved names supplied to New. Callers that need to pick a
+// non-colliding identifier for a local variable or parameter should treat
+// this set as taken.
+func (im *Imports) Reserved() []string {
+	out := make([]string, 0, len(im.used))
+	for name := range im.used {
+		out = append(out, name)
+	}
+	return out
+}
+
 // Sorted returns one entry per imported package, sorted by path. The
 // container's own package is excluded.
 func (im *Imports) Sorted() []ImportEntry {

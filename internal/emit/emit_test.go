@@ -377,6 +377,38 @@ type Container struct {
 	}
 }
 
+func TestEmit_VarNameDoesNotShadowImportedPackage(t *testing.T) {
+	t.Parallel()
+
+	// Single-file fixture where the result type's lowercased name ("db",
+	// "context") collides with a top-level identifier that mimics a
+	// package import: declaring a local `db` would break any later
+	// db.Open(...) call. Inject the reserved aliases into the Imports
+	// tracker by hand to mirror the multi-file scenario.
+	src := `package myapp
+type DB struct{}
+type Context struct{}
+func NewDB() *DB { return nil }
+func NewContext() Context { return Context{} }
+type Container struct {
+	DB  *DB     ` + "`inject:\"with=NewDB\"`" + `
+	Ctx Context ` + "`inject:\"\"`" + `
+}
+`
+	p := buildPlan(t, src)
+
+	// Reserve "db" and "context" as if those were import aliases visible
+	// to the generated file. The assignNames pass must avoid them.
+	im := emit.New("myapp", "db", "context")
+	got := emit.RenderForTest(t, im, p)
+
+	for _, bad := range []string{"\tdb :=", "\tcontext :="} {
+		if strings.Contains(got, bad) {
+			t.Errorf("generated body shadows reserved alias (matched %q):\n%s", bad, got)
+		}
+	}
+}
+
 func TestEmit_NonBlankArgStoresInField(t *testing.T) {
 	t.Parallel()
 

@@ -100,7 +100,8 @@ func collectImports(im *Imports, p plan.Plan) {
 func writeContainer(w io.Writer, im *Imports, p plan.Plan) error {
 	name := p.ConstructorName
 	structName := p.Container.StructName
-	paramSig := formatParams(im, p.Inputs)
+	ns := assignNames(im, p)
+	paramSig := formatParams(im, p.Inputs, ns)
 	retSig := im.QualifyType(p.ReturnType)
 
 	fmt.Fprintf(w, "// %s initializes dependencies and constructs %s.\n", name, structName)
@@ -110,21 +111,78 @@ func writeContainer(w io.Writer, im *Imports, p plan.Plan) error {
 		fmt.Fprintf(w, "func %s(%s) %s {\n", name, paramSig, retSig)
 	}
 
-	wrote, err := writeSteps(w, im, p, retSig)
+	wrote, err := writeSteps(w, im, p, ns, retSig)
 	if err != nil {
 		return err
 	}
 
-	writeStructLiteral(w, p, wrote)
+	writeStructLiteral(w, p, ns, wrote)
 	if p.ReturnsError {
 		fmt.Fprint(w, ", nil")
 	}
 	fmt.Fprint(w, "\n}\n\n")
 
 	if p.EmitMust {
-		writeMustVariant(w, im, p)
+		writeMustVariant(w, im, p, ns)
 	}
 	return nil
+}
+
+// names holds the final, collision-free identifiers used when rendering one
+// plan. Indices line up with plan.Inputs / plan.Steps.
+type names struct {
+	inputs []string
+	steps  []string
+}
+
+// assignNames picks variable and parameter names for the plan that do not
+// collide with imported package aliases. Each name is derived from the
+// plan-level name (Input.Name / Step.VarName) and suffixed with a counter
+// when a collision is detected. Steps that reference an input share that
+// input's renamed identifier so the function signature and the body stay
+// in sync.
+func assignNames(im *Imports, p plan.Plan) names {
+	taken := map[string]bool{}
+	for _, a := range im.Reserved() {
+		taken[a] = true
+	}
+	// Reserve identifiers the generated body always uses.
+	taken["err"] = true
+	taken["v"] = true
+	taken["_"] = true
+
+	pick := func(base string) string {
+		if base == "" || base == "_" {
+			base = "v"
+		}
+		if !taken[base] {
+			taken[base] = true
+			return base
+		}
+		for i := 2; ; i++ {
+			try := fmt.Sprintf("%s%d", base, i)
+			if !taken[try] {
+				taken[try] = true
+				return try
+			}
+		}
+	}
+
+	ns := names{
+		inputs: make([]string, len(p.Inputs)),
+		steps:  make([]string, len(p.Steps)),
+	}
+	for i, in := range p.Inputs {
+		ns.inputs[i] = pick(in.Name)
+	}
+	for i, s := range p.Steps {
+		if s.Kind == plan.StepKindInput {
+			ns.steps[i] = ns.inputs[s.InputIndex]
+			continue
+		}
+		ns.steps[i] = pick(s.VarName)
+	}
+	return ns
 }
 
 // writeSteps emits step lines and reports whether any visible code was
@@ -132,7 +190,7 @@ func writeContainer(w io.Writer, im *Imports, p plan.Plan) error {
 // non-blank inject:"arg" fields) produce no step lines, and the caller
 // uses the bool to decide whether to leave a blank line before the
 // struct literal.
-func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) (bool, error) {
+func writeSteps(w io.Writer, im *Imports, p plan.Plan, ns names, retSig string) (bool, error) {
 	zeroExpr := "nil"
 	if !isNilable(p.ReturnType) {
 		// For non-nilable return types we need an explicit zero value;
@@ -141,13 +199,12 @@ func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) (bool, err
 	}
 
 	wrote := false
-	for _, s := range p.Steps {
+	for i, s := range p.Steps {
 		switch s.Kind {
 		case plan.StepKindInput:
 			// The input is already a function parameter — nothing to emit.
 		case plan.StepKindEmbedField:
-			in := p.Inputs[s.InputIndex]
-			fmt.Fprintf(w, "\t%s := %s.%s\n", s.VarName, in.Name, s.EmbedFieldName)
+			fmt.Fprintf(w, "\t%s := %s.%s\n", ns.steps[i], ns.inputs[s.InputIndex], s.EmbedFieldName)
 			wrote = true
 		case plan.StepKindProvider:
 			if s.Provider == nil {
@@ -155,16 +212,16 @@ func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) (bool, err
 			}
 			args := make([]string, 0, len(s.ArgSteps))
 			for _, idx := range s.ArgSteps {
-				args = append(args, p.Steps[idx].VarName)
+				args = append(args, ns.steps[idx])
 			}
 			call := im.QualifyProvider(s.Provider)
 			if s.Provider.ReturnsError {
-				fmt.Fprintf(w, "\t%s, err := %s(%s)\n", s.VarName, call, strings.Join(args, ", "))
+				fmt.Fprintf(w, "\t%s, err := %s(%s)\n", ns.steps[i], call, strings.Join(args, ", "))
 				fmt.Fprint(w, "\tif err != nil {\n")
 				fmt.Fprintf(w, "\t\treturn %s, err\n", zeroExpr)
 				fmt.Fprint(w, "\t}\n")
 			} else {
-				fmt.Fprintf(w, "\t%s := %s(%s)\n", s.VarName, call, strings.Join(args, ", "))
+				fmt.Fprintf(w, "\t%s := %s(%s)\n", ns.steps[i], call, strings.Join(args, ", "))
 			}
 			wrote = true
 		}
@@ -189,23 +246,22 @@ func isNilable(t types.Type) bool {
 	return false
 }
 
-func writeStructLiteral(w io.Writer, p plan.Plan, leadingBlank bool) {
+func writeStructLiteral(w io.Writer, p plan.Plan, ns names, leadingBlank bool) {
 	if leadingBlank {
 		fmt.Fprint(w, "\n")
 	}
 	fmt.Fprintf(w, "\treturn &%s{\n", p.Container.StructName)
 	for _, o := range p.Outputs {
-		v := p.Steps[o.StepIndex].VarName
-		fmt.Fprintf(w, "\t\t%s: %s,\n", o.FieldName, v)
+		fmt.Fprintf(w, "\t\t%s: %s,\n", o.FieldName, ns.steps[o.StepIndex])
 	}
 	fmt.Fprint(w, "\t}")
 }
 
 // writeMustVariant emits MustNewX, which delegates to NewX and panics on
 // error.
-func writeMustVariant(w io.Writer, im *Imports, p plan.Plan) {
+func writeMustVariant(w io.Writer, im *Imports, p plan.Plan, ns names) {
 	name := "Must" + p.ConstructorName
-	paramSig := formatParams(im, p.Inputs)
+	paramSig := formatParams(im, p.Inputs, ns)
 	retSig := im.QualifyType(p.ReturnType)
 
 	fmt.Fprintf(w,
@@ -213,32 +269,28 @@ func writeMustVariant(w io.Writer, im *Imports, p plan.Plan) {
 		name, p.Container.StructName)
 	fmt.Fprintf(w, "func %s(%s) %s {\n", name, paramSig, retSig)
 	if p.ReturnsError {
-		fmt.Fprintf(w, "\tv, err := %s(%s)\n", p.ConstructorName, formatArgs(p.Inputs))
+		fmt.Fprintf(w, "\tv, err := %s(%s)\n", p.ConstructorName, formatArgs(ns))
 		fmt.Fprint(w, "\tif err != nil {\n")
 		fmt.Fprint(w, "\t\tpanic(err)\n")
 		fmt.Fprint(w, "\t}\n")
 		fmt.Fprint(w, "\treturn v\n")
 	} else {
-		fmt.Fprintf(w, "\treturn %s(%s)\n", p.ConstructorName, formatArgs(p.Inputs))
+		fmt.Fprintf(w, "\treturn %s(%s)\n", p.ConstructorName, formatArgs(ns))
 	}
 	fmt.Fprint(w, "}\n\n")
 }
 
-func formatParams(im *Imports, inputs []plan.Input) string {
+func formatParams(im *Imports, inputs []plan.Input, ns names) string {
 	if len(inputs) == 0 {
 		return ""
 	}
 	parts := make([]string, 0, len(inputs))
-	for _, in := range inputs {
-		parts = append(parts, in.Name+" "+im.QualifyType(in.Type))
+	for i, in := range inputs {
+		parts = append(parts, ns.inputs[i]+" "+im.QualifyType(in.Type))
 	}
 	return strings.Join(parts, ", ")
 }
 
-func formatArgs(inputs []plan.Input) string {
-	parts := make([]string, 0, len(inputs))
-	for _, in := range inputs {
-		parts = append(parts, in.Name)
-	}
-	return strings.Join(parts, ", ")
+func formatArgs(ns names) string {
+	return strings.Join(ns.inputs, ", ")
 }
