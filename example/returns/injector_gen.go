@@ -8,9 +8,9 @@ import (
 
 // NewGreeter initializes dependencies and constructs app.
 func NewGreeter() greeter.Greeter {
-	greeter := greeter.NewGreeter()
+	greeter2 := greeter.NewGreeter()
 
 	return &app{
-		service: greeter,
+		service: greeter2,
 	}
 }
