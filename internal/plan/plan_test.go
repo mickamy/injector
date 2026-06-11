@@ -144,6 +144,60 @@ type Container struct {
 	}
 }
 
+func TestBuild_NonBlankWithActsAsOverride(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type User struct{}
+func NewWriter() *DB { return nil }
+func NewReader() *DB { return nil }
+func NewUser(db *DB) *User { return nil }
+type Container struct {
+	DB   *DB   ` + "`inject:\"with=NewWriter\"`" + `
+	User *User ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	for _, s := range p.Steps {
+		if s.Provider != nil && s.Provider.FuncName == "NewReader" {
+			t.Errorf("NewReader must not appear when DB is pinned to NewWriter; steps=%+v", p.Steps)
+		}
+	}
+
+	var hasDBOutput, hasUserOutput bool
+	for _, o := range p.Outputs {
+		switch o.FieldName {
+		case "DB":
+			hasDBOutput = true
+		case "User":
+			hasUserOutput = true
+		}
+	}
+	if !hasDBOutput || !hasUserOutput {
+		t.Errorf("expected both DB and User outputs, got %+v", p.Outputs)
+	}
+}
+
+func TestBuild_NonBlankWithConflictingProviders(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+func NewWriter() *DB { return nil }
+func NewReader() *DB { return nil }
+type Container struct {
+	A *DB ` + "`inject:\"with=NewWriter\"`" + `
+	B *DB ` + "`inject:\"with=NewReader\"`" + `
+}
+`
+	_, ds := build(t, src, "Container", plan.Options{})
+	if !diag.HasErrors(ds) {
+		t.Fatalf("expected conflicting-providers diag, got %v", ds)
+	}
+}
+
 func TestBuild_AmbiguousProviderError(t *testing.T) {
 	t.Parallel()
 
