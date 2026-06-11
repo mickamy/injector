@@ -631,6 +631,11 @@ func deriveInputName(t types.Type) string {
 // would shadow an existing step name). Steps that are not bound to any
 // output keep the type-derived name picked at resolution time.
 func renameOutputSteps(steps []Step, outputs []Output) {
+	used := make(map[string]bool, len(steps))
+	for _, st := range steps {
+		used[st.VarName] = true
+	}
+
 	for _, o := range outputs {
 		if o.StepIndex < 0 || o.StepIndex >= len(steps) {
 			continue
@@ -643,24 +648,19 @@ func renameOutputSteps(steps []Step, outputs []Output) {
 		if base == "" || base == s.VarName {
 			continue
 		}
-		used := make(map[string]struct{}, len(steps))
-		for j, st := range steps {
-			if j == o.StepIndex {
-				continue
-			}
-			used[st.VarName] = struct{}{}
-		}
+		delete(used, s.VarName)
 		pick := base
-		if _, taken := used[pick]; taken {
+		if used[pick] {
 			for i := 2; ; i++ {
 				try := fmt.Sprintf("%s%d", base, i)
-				if _, taken := used[try]; !taken {
+				if !used[try] {
 					pick = try
 					break
 				}
 			}
 		}
 		s.VarName = pick
+		used[pick] = true
 	}
 }
 
