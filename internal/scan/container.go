@@ -191,10 +191,8 @@ func decideRole(fieldName string, pt ParsedTag, pos token.Position) (ir.Role, *d
 		return ir.RoleOut, nil
 
 	case TagArg:
-		if !blank {
-			d := diag.Errorf(pos, `inject:"arg" requires a blank field (_)`)
-			return 0, &d
-		}
+		// Blank: constructor input only. Non-blank: constructor input
+		// whose value is also stored in the named container field.
 		return ir.RoleArg, nil
 
 	case TagReturns:
