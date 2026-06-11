@@ -10,9 +10,9 @@ import (
 // NewApp initializes dependencies and constructs App.
 func NewApp(infra *di.Infra) *App {
 	database := infra.Database
-	user := service.NewUser(database)
+	userService := service.NewUser(database)
 
 	return &App{
-		UserService: user,
+		UserService: userService,
 	}
 }

@@ -144,6 +144,242 @@ type Container struct {
 	}
 }
 
+func TestBuild_FieldBoundStepUsesFieldName(t *testing.T) {
+	t.Parallel()
+
+	// `Tx Transactor inject:""` should produce a variable named after the
+	// destination field — "tx" — rather than the function ("new") or the
+	// result type ("transactor").
+	src := `package test
+type Transactor struct{}
+func New() Transactor { return Transactor{} }
+type Container struct {
+	Tx Transactor ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	if len(p.Steps) != 1 {
+		t.Fatalf("steps = %d, want 1", len(p.Steps))
+	}
+	if got, want := p.Steps[0].VarName, "tx"; got != want {
+		t.Errorf("var name = %q, want %q", got, want)
+	}
+}
+
+func TestBuild_IntermediateStepUsesResultType(t *testing.T) {
+	t.Parallel()
+
+	// `New() *Foo` consumed transitively by `Make` (whose result is the
+	// container's field) is an intermediate step with no field name to
+	// borrow from. It should fall back to the result type — "foo" — not
+	// the function name.
+	src := `package test
+type Foo struct{}
+type Bar struct{}
+func New() *Foo { return nil }
+func Make(f *Foo) *Bar { return nil }
+type Container struct {
+	Bar *Bar ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	var fooStep, barStep plan.Step
+	for _, s := range p.Steps {
+		switch {
+		case s.Provider != nil && s.Provider.FuncName == "New":
+			fooStep = s
+		case s.Provider != nil && s.Provider.FuncName == "Make":
+			barStep = s
+		}
+	}
+	if got, want := fooStep.VarName, "foo"; got != want {
+		t.Errorf("intermediate var name = %q, want %q", got, want)
+	}
+	if got, want := barStep.VarName, "bar"; got != want {
+		t.Errorf("field-bound var name = %q, want %q", got, want)
+	}
+}
+
+func TestBuild_FieldNameSwapNoUnnecessarySuffix(t *testing.T) {
+	t.Parallel()
+
+	// Two steps want to swap names: step A holds "foo" (result type Foo)
+	// and is bound to a "Db" field (wants "db"), while step B holds "db"
+	// (result type Db) and is bound to a "Foo" field (wants "foo"). The
+	// rename pass must vacate both old names before picking the new ones
+	// so each side gets its preferred name without a `_2` suffix.
+	src := `package test
+type Foo struct{}
+type Db struct{}
+func NewFoo() Foo { return Foo{} }
+func NewDb() Db   { return Db{} }
+type Container struct {
+	Db  Foo ` + "`inject:\"\"`" + `
+	Foo Db  ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	bindings := map[string]string{}
+	for _, o := range p.Outputs {
+		bindings[o.FieldName] = p.Steps[o.StepIndex].VarName
+	}
+	if got, want := bindings["Db"], "db"; got != want {
+		t.Errorf("field Db var = %q, want %q (swap should not force a suffix)", got, want)
+	}
+	if got, want := bindings["Foo"], "foo"; got != want {
+		t.Errorf("field Foo var = %q, want %q (swap should not force a suffix)", got, want)
+	}
+}
+
+func TestBuild_TypeAliasResultDerivesAliasName(t *testing.T) {
+	t.Parallel()
+
+	// A provider returning a type alias used to fall through deriveInputName's
+	// *types.Named check (alias is *types.Alias in Go 1.22+), leaving the
+	// variable to fall back to the function name. After types.Unalias is
+	// applied inside deriveInputName, the alias's target name flows through.
+	src := `package test
+type Real struct{}
+type Alias = Real
+func New() Alias { return Alias{} }
+type Container struct {
+	V Alias ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	// Steps are: one provider step (New). It's field-bound to V → renamed
+	// to lowerFirst("V") = "v". The interesting check is the intermediate
+	// case: if no field were attached, we'd want "real" not "new" / "arg".
+	// Reuse the existing intermediate-naming test shape:
+	src2 := `package test
+type Real struct{}
+type Alias = Real
+type Wrap struct{}
+func New() Alias        { return Alias{} }
+func Wrapper(a Alias) Wrap { return Wrap{} }
+type Container struct {
+	W Wrap ` + "`inject:\"\"`" + `
+}
+`
+	p2, _ := mustBuild(t, src2, "Container", plan.Options{})
+
+	var aliasStep plan.Step
+	for _, s := range p2.Steps {
+		if s.Provider != nil && s.Provider.FuncName == "New" {
+			aliasStep = s
+			break
+		}
+	}
+	if got, want := aliasStep.VarName, "real"; got != want {
+		t.Errorf("alias intermediate var = %q, want %q (Unalias should resolve to Real)", got, want)
+	}
+
+	// Sanity: the field-bound case in p (V Alias) lands on "v" through
+	// the rename pass.
+	if p.Outputs[0].FieldName != "V" || p.Steps[p.Outputs[0].StepIndex].VarName != "v" {
+		t.Errorf("field-bound alias did not land on field name; outputs=%+v steps=%+v",
+			p.Outputs, p.Steps)
+	}
+}
+
+func TestBuild_SharedStepDoesNotLeakCandidate(t *testing.T) {
+	t.Parallel()
+
+	// Two container fields share the same provider step (both want *DB).
+	// The naive rename pass would queue the step twice — once with "db"
+	// and once with "backup" — and mark both names as used, forcing an
+	// unrelated step that wanted "backup" onto "backup2". The decided-
+	// once gate ensures only the first field name is queued.
+	src := `package test
+type DB struct{}
+type Backup struct{}
+func NewDB() *DB         { return nil }
+func NewBackup() *Backup { return nil }
+type Container struct {
+	DB     *DB     ` + "`inject:\"\"`" + `
+	Backup *Backup ` + "`inject:\"\"`" + `
+	Twin   *DB     ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	var backupVar string
+	for _, s := range p.Steps {
+		if s.Provider != nil && s.Provider.FuncName == "NewBackup" {
+			backupVar = s.VarName
+			break
+		}
+	}
+	if got, want := backupVar, "backup"; got != want {
+		t.Errorf("NewBackup var = %q, want %q (Twin sharing *DB must not leak the name)", got, want)
+	}
+}
+
+func TestBuild_SharedStepPreservesMatchingFieldName(t *testing.T) {
+	t.Parallel()
+
+	// Step's existing name "db" already matches field "DB"; another
+	// field "Backup" also binds to the same step. The first match
+	// should leave the variable alone instead of subsequently renaming
+	// it to "backup".
+	src := `package test
+type DB struct{}
+func NewDB() *DB { return nil }
+type Container struct {
+	DB     *DB ` + "`inject:\"\"`" + `
+	Backup *DB ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	if len(p.Steps) != 1 {
+		t.Fatalf("steps = %d, want 1", len(p.Steps))
+	}
+	if got, want := p.Steps[0].VarName, "db"; got != want {
+		t.Errorf("shared-step var = %q, want %q (matching field name should win)", got, want)
+	}
+}
+
+func TestBuild_FieldNameTakenForcesSuffix(t *testing.T) {
+	t.Parallel()
+
+	// An intermediate step's natural name ("tx", from result type Tx)
+	// already occupies that slot, then a field-bound step (field "Tx",
+	// holding a different type) tries to claim "tx" too. The field-bound
+	// step should cascade to "tx2" — the simple-cascade behavior chosen
+	// in option A.
+	src := `package test
+type Tx struct{}
+type Other struct{}
+func NewTx() Tx { return Tx{} }
+func NewOther(Tx) Other { return Other{} }
+type Container struct {
+	Tx Other ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	var intermediate, fieldBound plan.Step
+	for _, s := range p.Steps {
+		switch {
+		case s.Provider != nil && s.Provider.FuncName == "NewTx":
+			intermediate = s
+		case s.Provider != nil && s.Provider.FuncName == "NewOther":
+			fieldBound = s
+		}
+	}
+	if got, want := intermediate.VarName, "tx"; got != want {
+		t.Errorf("intermediate var = %q, want %q", got, want)
+	}
+	if got, want := fieldBound.VarName, "tx2"; got != want {
+		t.Errorf("field-bound var = %q, want %q (cascade)", got, want)
+	}
+}
+
 func TestBuild_NonBlankWithActsAsOverride(t *testing.T) {
 	t.Parallel()
 
