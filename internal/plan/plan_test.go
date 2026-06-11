@@ -286,6 +286,64 @@ type Container struct {
 	}
 }
 
+func TestBuild_SharedStepDoesNotLeakCandidate(t *testing.T) {
+	t.Parallel()
+
+	// Two container fields share the same provider step (both want *DB).
+	// The naive rename pass would queue the step twice — once with "db"
+	// and once with "backup" — and mark both names as used, forcing an
+	// unrelated step that wanted "backup" onto "backup2". The decided-
+	// once gate ensures only the first field name is queued.
+	src := `package test
+type DB struct{}
+type Backup struct{}
+func NewDB() *DB         { return nil }
+func NewBackup() *Backup { return nil }
+type Container struct {
+	DB     *DB     ` + "`inject:\"\"`" + `
+	Backup *Backup ` + "`inject:\"\"`" + `
+	Twin   *DB     ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	var backupVar string
+	for _, s := range p.Steps {
+		if s.Provider != nil && s.Provider.FuncName == "NewBackup" {
+			backupVar = s.VarName
+			break
+		}
+	}
+	if got, want := backupVar, "backup"; got != want {
+		t.Errorf("NewBackup var = %q, want %q (Twin sharing *DB must not leak the name)", got, want)
+	}
+}
+
+func TestBuild_SharedStepPreservesMatchingFieldName(t *testing.T) {
+	t.Parallel()
+
+	// Step's existing name "db" already matches field "DB"; another
+	// field "Backup" also binds to the same step. The first match
+	// should leave the variable alone instead of subsequently renaming
+	// it to "backup".
+	src := `package test
+type DB struct{}
+func NewDB() *DB { return nil }
+type Container struct {
+	DB     *DB ` + "`inject:\"\"`" + `
+	Backup *DB ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	if len(p.Steps) != 1 {
+		t.Fatalf("steps = %d, want 1", len(p.Steps))
+	}
+	if got, want := p.Steps[0].VarName, "db"; got != want {
+		t.Errorf("shared-step var = %q, want %q (matching field name should win)", got, want)
+	}
+}
+
 func TestBuild_FieldNameTakenForcesSuffix(t *testing.T) {
 	t.Parallel()
 

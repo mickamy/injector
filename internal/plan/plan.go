@@ -652,20 +652,39 @@ func renameOutputSteps(steps []Step, outputs []Output) {
 		base    string
 	}
 	var renames []pendingRename
+	// A shared step (bound to more than one container field, e.g. when two
+	// fields request the same dependency) appears multiple times in
+	// outputs. Decide the rename for each step at the first valid output
+	// and skip any later occurrences so we don't queue the same step
+	// twice, which would leak the dropped candidate name into `used` and
+	// force unrelated steps onto a suffix.
+	decided := make(map[int]bool, len(outputs))
 	for _, o := range outputs {
 		if o.StepIndex < 0 || o.StepIndex >= len(steps) {
 			continue
 		}
+		if decided[o.StepIndex] {
+			continue
+		}
 		s := &steps[o.StepIndex]
 		if s.Kind == StepKindInput {
+			decided[o.StepIndex] = true
 			continue
 		}
 		base := lowerFirst(o.FieldName)
-		if base == "" || base == s.VarName {
+		if base == "" {
+			continue
+		}
+		if base == s.VarName {
+			// Existing name already lines up with this field; no rename
+			// needed even if later outputs would have picked a different
+			// base.
+			decided[o.StepIndex] = true
 			continue
 		}
 		delete(used, s.VarName)
 		renames = append(renames, pendingRename{stepIdx: o.StepIndex, base: base})
+		decided[o.StepIndex] = true
 	}
 
 	for _, r := range renames {
