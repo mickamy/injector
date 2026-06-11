@@ -26,6 +26,8 @@ func TestParseTag(t *testing.T) {
 		{name: "arg empty name", in: "arg=", wantErr: `inject:"arg=..." requires a name`},
 		{name: "returns", in: "returns", want: scan.ParsedTag{Kind: scan.TagReturns}},
 		{name: "returns with value", in: "returns=foo", wantErr: `inject:"returns" does not take a value`},
+		{name: "embed", in: "embed", want: scan.ParsedTag{Kind: scan.TagEmbed}},
+		{name: "embed with value", in: "embed=foo", wantErr: `inject:"embed" does not take a value`},
 		{name: "unknown bare", in: "xyz", wantErr: `unknown inject tag form "xyz"`},
 		{name: "unknown kv", in: "xyz=1", wantErr: `unknown inject tag form "xyz=1"`},
 	}
