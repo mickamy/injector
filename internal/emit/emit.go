@@ -142,8 +142,8 @@ type names struct {
 // input's renamed identifier so the function signature and the body stay
 // in sync.
 func assignNames(im *Imports, p plan.Plan) names {
-	taken := map[string]bool{}
-	for _, a := range im.Reserved() {
+	taken := make(map[string]bool, len(im.used)+3)
+	for a := range im.used {
 		taken[a] = true
 	}
 	// Reserve identifiers the generated body always uses.
