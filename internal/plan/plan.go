@@ -614,6 +614,10 @@ func deriveInputName(t types.Type) string {
 	if t == nil {
 		return "arg"
 	}
+	// Resolve Go 1.22+ type aliases (`type Client = valkey.Client`) so
+	// the alias's own name flows through instead of falling out to the
+	// "arg" sentinel.
+	t = types.Unalias(t)
 	if ptr, ok := t.(*types.Pointer); ok {
 		return deriveInputName(ptr.Elem())
 	}
@@ -630,12 +634,24 @@ func deriveInputName(t types.Type) string {
 // at the call site (`tx := tx.New(...)` for a `Tx` field, suffixed if it
 // would shadow an existing step name). Steps that are not bound to any
 // output keep the type-derived name picked at resolution time.
+//
+// Renaming runs in two passes so that an output whose desired base name
+// is currently held by another step that is also about to be renamed can
+// claim the now-vacated name without unnecessarily suffixing. Without
+// this, a hypothetical swap (step A holds "foo" and wants "db", step B
+// holds "db" and wants "foo") would land on `foo2`/`db` instead of the
+// clean `foo`/`db`.
 func renameOutputSteps(steps []Step, outputs []Output) {
 	used := make(map[string]bool, len(steps))
 	for _, st := range steps {
 		used[st.VarName] = true
 	}
 
+	type pendingRename struct {
+		stepIdx int
+		base    string
+	}
+	var renames []pendingRename
 	for _, o := range outputs {
 		if o.StepIndex < 0 || o.StepIndex >= len(steps) {
 			continue
@@ -649,17 +665,21 @@ func renameOutputSteps(steps []Step, outputs []Output) {
 			continue
 		}
 		delete(used, s.VarName)
-		pick := base
+		renames = append(renames, pendingRename{stepIdx: o.StepIndex, base: base})
+	}
+
+	for _, r := range renames {
+		pick := r.base
 		if used[pick] {
 			for i := 2; ; i++ {
-				try := fmt.Sprintf("%s%d", base, i)
+				try := fmt.Sprintf("%s%d", r.base, i)
 				if !used[try] {
 					pick = try
 					break
 				}
 			}
 		}
-		s.VarName = pick
+		steps[r.stepIdx].VarName = pick
 		used[pick] = true
 	}
 }

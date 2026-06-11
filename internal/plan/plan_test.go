@@ -202,6 +202,90 @@ type Container struct {
 	}
 }
 
+func TestBuild_FieldNameSwapNoUnnecessarySuffix(t *testing.T) {
+	t.Parallel()
+
+	// Two steps want to swap names: step A holds "foo" (result type Foo)
+	// and is bound to a "Db" field (wants "db"), while step B holds "db"
+	// (result type Db) and is bound to a "Foo" field (wants "foo"). The
+	// rename pass must vacate both old names before picking the new ones
+	// so each side gets its preferred name without a `_2` suffix.
+	src := `package test
+type Foo struct{}
+type Db struct{}
+func NewFoo() Foo { return Foo{} }
+func NewDb() Db   { return Db{} }
+type Container struct {
+	Db  Foo ` + "`inject:\"\"`" + `
+	Foo Db  ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	bindings := map[string]string{}
+	for _, o := range p.Outputs {
+		bindings[o.FieldName] = p.Steps[o.StepIndex].VarName
+	}
+	if got, want := bindings["Db"], "db"; got != want {
+		t.Errorf("field Db var = %q, want %q (swap should not force a suffix)", got, want)
+	}
+	if got, want := bindings["Foo"], "foo"; got != want {
+		t.Errorf("field Foo var = %q, want %q (swap should not force a suffix)", got, want)
+	}
+}
+
+func TestBuild_TypeAliasResultDerivesAliasName(t *testing.T) {
+	t.Parallel()
+
+	// A provider returning a type alias used to fall through deriveInputName's
+	// *types.Named check (alias is *types.Alias in Go 1.22+), leaving the
+	// variable to fall back to the function name. After types.Unalias is
+	// applied inside deriveInputName, the alias's target name flows through.
+	src := `package test
+type Real struct{}
+type Alias = Real
+func New() Alias { return Alias{} }
+type Container struct {
+	V Alias ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	// Steps are: one provider step (New). It's field-bound to V → renamed
+	// to lowerFirst("V") = "v". The interesting check is the intermediate
+	// case: if no field were attached, we'd want "real" not "new" / "arg".
+	// Reuse the existing intermediate-naming test shape:
+	src2 := `package test
+type Real struct{}
+type Alias = Real
+type Wrap struct{}
+func New() Alias        { return Alias{} }
+func Wrapper(a Alias) Wrap { return Wrap{} }
+type Container struct {
+	W Wrap ` + "`inject:\"\"`" + `
+}
+`
+	p2, _ := mustBuild(t, src2, "Container", plan.Options{})
+
+	var aliasStep plan.Step
+	for _, s := range p2.Steps {
+		if s.Provider != nil && s.Provider.FuncName == "New" {
+			aliasStep = s
+			break
+		}
+	}
+	if got, want := aliasStep.VarName, "real"; got != want {
+		t.Errorf("alias intermediate var = %q, want %q (Unalias should resolve to Real)", got, want)
+	}
+
+	// Sanity: the field-bound case in p (V Alias) lands on "v" through
+	// the rename pass.
+	if p.Outputs[0].FieldName != "V" || p.Steps[p.Outputs[0].StepIndex].VarName != "v" {
+		t.Errorf("field-bound alias did not land on field name; outputs=%+v steps=%+v",
+			p.Outputs, p.Steps)
+	}
+}
+
 func TestBuild_FieldNameTakenForcesSuffix(t *testing.T) {
 	t.Parallel()
 
