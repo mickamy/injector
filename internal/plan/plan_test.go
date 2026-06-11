@@ -335,6 +335,106 @@ func NewX() X { return X{} }`,
 	}
 }
 
+func TestBuild_EmbedExposesFields(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type Repo struct{}
+type Infra struct {
+	DB *DB
+}
+func NewRepo(db *DB) *Repo { return nil }
+type Container struct {
+	_    *Infra ` + "`inject:\"embed\"`" + `
+	Repo *Repo  ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	if len(p.Inputs) != 1 || p.Inputs[0].Name != "infra" {
+		t.Fatalf("inputs = %+v, want one named infra", p.Inputs)
+	}
+
+	var foundEmbed, foundProvider bool
+	for _, s := range p.Steps {
+		switch s.Kind {
+		case plan.StepKindEmbedField:
+			foundEmbed = true
+			if s.EmbedFieldName != "DB" {
+				t.Errorf("embed field = %q, want DB", s.EmbedFieldName)
+			}
+			if s.InputIndex != 0 {
+				t.Errorf("embed input index = %d, want 0", s.InputIndex)
+			}
+		case plan.StepKindProvider:
+			foundProvider = true
+		}
+	}
+	if !foundEmbed {
+		t.Errorf("no StepKindEmbedField step emitted; steps=%+v", p.Steps)
+	}
+	if !foundProvider {
+		t.Errorf("no provider step emitted")
+	}
+}
+
+func TestBuild_EmbedRejectsNonStruct(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type Greeter interface{ Greet() string }
+type Container struct {
+	_ Greeter ` + "`inject:\"embed\"`" + `
+}
+`
+	_, ds := build(t, src, "Container", plan.Options{})
+	if !diag.HasErrors(ds) {
+		t.Fatalf("expected error diag, got %v", ds)
+	}
+}
+
+func TestBuild_EmbedAmbiguousAcrossEmbeds(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type A struct { DB *DB }
+type B struct { DB *DB }
+type Container struct {
+	_ *A ` + "`inject:\"embed\"`" + `
+	_ *B ` + "`inject:\"embed\"`" + `
+}
+`
+	_, ds := build(t, src, "Container", plan.Options{})
+	if !diag.HasErrors(ds) {
+		t.Fatalf("expected error diag for duplicate embed field type, got %v", ds)
+	}
+}
+
+func TestBuild_DirectArgWinsOverEmbed(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type Repo struct{}
+type Infra struct { DB *DB }
+func NewRepo(db *DB) *Repo { return nil }
+type Container struct {
+	_    *Infra ` + "`inject:\"embed\"`" + `
+	_    *DB    ` + "`inject:\"arg\"`" + `
+	Repo *Repo  ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	for _, s := range p.Steps {
+		if s.Kind == plan.StepKindEmbedField {
+			t.Errorf("did not expect any embed step when direct arg matches; got %+v", s)
+		}
+	}
+}
+
 func TestBuild_TypeAliasResolves(t *testing.T) {
 	t.Parallel()
 
