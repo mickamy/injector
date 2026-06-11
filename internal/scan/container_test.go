@@ -128,6 +128,52 @@ type app struct {
 	}
 }
 
+func TestContainers_EmbedRole(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+
+type Infra struct{}
+
+type Container struct {
+	_   *Infra ` + "`inject:\"embed\"`" + `
+}
+`
+	pkg := loadTestPackage(t, src)
+	cs, ds := scan.Containers([]*packages.Package{pkg})
+	if diag.HasErrors(ds) {
+		t.Fatalf("unexpected error diags: %v", ds)
+	}
+	if len(cs) != 1 || len(cs[0].Fields) != 1 {
+		t.Fatalf("containers/fields shape unexpected: %+v", cs)
+	}
+	f := cs[0].Fields[0]
+	if f.Role != ir.RoleEmbed {
+		t.Errorf("role = %v, want RoleEmbed", f.Role)
+	}
+	if f.Name != "_" {
+		t.Errorf("name = %q, want _", f.Name)
+	}
+}
+
+func TestContainers_EmbedRequiresBlankField(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+
+type Infra struct{}
+
+type Container struct {
+	Infra *Infra ` + "`inject:\"embed\"`" + `
+}
+`
+	pkg := loadTestPackage(t, src)
+	_, ds := scan.Containers([]*packages.Package{pkg})
+	if !diag.HasErrors(ds) {
+		t.Fatalf("expected error diag, got %v", ds)
+	}
+}
+
 func TestContainers_InvalidTagProducesDiag(t *testing.T) {
 	t.Parallel()
 
