@@ -335,6 +335,26 @@ func NewX() X { return X{} }`,
 	}
 }
 
+func TestBuild_TypeAliasResolves(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type Real struct{}
+type Alias = Real
+func NewAlias() Alias { return Alias{} }
+type Container struct {
+	Field Alias ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+	if len(p.Steps) != 1 {
+		t.Fatalf("steps = %d, want 1", len(p.Steps))
+	}
+	if p.Steps[0].Provider == nil || p.Steps[0].Provider.FuncName != "NewAlias" {
+		t.Errorf("step[0] = %+v, want NewAlias", p.Steps[0])
+	}
+}
+
 // build runs scan + plan on src and returns the plan plus all diagnostics.
 func build(t *testing.T, src, containerName string, opts plan.Options) (plan.Plan, []diag.Diag) {
 	t.Helper()

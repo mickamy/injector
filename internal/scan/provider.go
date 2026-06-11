@@ -147,8 +147,10 @@ func paramTypes(sig *types.Signature) []types.Type {
 
 // isProviderResultType reports whether t is a valid first-result type for a
 // provider: a named type, a pointer to a named type, or an interface
-// (anonymous or named).
+// (anonymous or named). Type aliases are resolved to their target before the
+// check so that providers returning an alias are still recognized.
 func isProviderResultType(t types.Type) bool {
+	t = types.Unalias(t)
 	if isNamedOrPtrToNamed(t) {
 		return true
 	}
