@@ -11,8 +11,8 @@ import (
 
 // NewTaskContainer initializes dependencies and constructs TaskContainer.
 func NewTaskContainer() (*TaskContainer, error) {
-	writerDatabaseConfig := config.NewWriterDatabaseConfig()
-	database, err := infra.NewDatabase(writerDatabaseConfig)
+	databaseConfig := config.NewWriterDatabaseConfig()
+	database, err := infra.NewDatabase(databaseConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -27,8 +27,8 @@ func NewTaskContainer() (*TaskContainer, error) {
 
 // NewUserContainer initializes dependencies and constructs UserContainer.
 func NewUserContainer() (*UserContainer, error) {
-	writerDatabaseConfig := config.NewWriterDatabaseConfig()
-	database, err := infra.NewDatabase(writerDatabaseConfig)
+	databaseConfig := config.NewWriterDatabaseConfig()
+	database, err := infra.NewDatabase(databaseConfig)
 	if err != nil {
 		return nil, err
 	}

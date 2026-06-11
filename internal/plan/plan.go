@@ -144,6 +144,8 @@ func Build(c ir.Container, idx *Index, opts Options) (Plan, []diag.Diag) {
 		}
 	}
 
+	renameOutputSteps(r.steps, outputs)
+
 	returnsErr := false
 	for _, s := range r.steps {
 		if s.Kind == StepKindProvider && s.Provider != nil && s.Provider.ReturnsError {
@@ -623,6 +625,45 @@ func deriveInputName(t types.Type) string {
 	return "arg"
 }
 
+// renameOutputSteps renames non-input steps that produce a container
+// output to lowerFirst(field name). This puts the field's own identifier
+// at the call site (`tx := tx.New(...)` for a `Tx` field, suffixed if it
+// would shadow an existing step name). Steps that are not bound to any
+// output keep the type-derived name picked at resolution time.
+func renameOutputSteps(steps []Step, outputs []Output) {
+	for _, o := range outputs {
+		if o.StepIndex < 0 || o.StepIndex >= len(steps) {
+			continue
+		}
+		s := &steps[o.StepIndex]
+		if s.Kind == StepKindInput {
+			continue
+		}
+		base := lowerFirst(o.FieldName)
+		if base == "" || base == s.VarName {
+			continue
+		}
+		used := make(map[string]struct{}, len(steps))
+		for j, st := range steps {
+			if j == o.StepIndex {
+				continue
+			}
+			used[st.VarName] = struct{}{}
+		}
+		pick := base
+		if _, taken := used[pick]; taken {
+			for i := 2; ; i++ {
+				try := fmt.Sprintf("%s%d", base, i)
+				if _, taken := used[try]; !taken {
+					pick = try
+					break
+				}
+			}
+		}
+		s.VarName = pick
+	}
+}
+
 func varNameForEmbed(es embedSource, existing []Step) string {
 	// FieldName may be a dotted selector (e.g. "CommonInfra.DB") when the
 	// source comes from a promoted field; only the leaf segment is a valid
@@ -651,21 +692,20 @@ func varNameForEmbed(es embedSource, existing []Step) string {
 }
 
 func varNameForProvider(p *ir.Provider, existing []Step) string {
-	base := p.FuncName
-	switch {
-	case strings.HasPrefix(base, "New") && len(base) > 3:
-		// "NewFoo" → "Foo": the convention encodes the result in the
-		// suffix, so the suffix is what we want as the variable name.
-		base = base[3:]
-	case base == "New":
-		// Bare factory: no suffix to mine, so use the result type's
-		// name. Otherwise the variable would be called `new`, which
-		// reads as the Go built-in.
-		base = ""
-	}
-	base = lowerFirst(base)
-	if base == "" {
-		base = deriveInputName(p.Result)
+	// Name the variable after what the call produces, not after the
+	// constructor function. `db.Open(...) *sql.DB` reads more naturally
+	// as `db := db.Open(...)` than `open := db.Open(...)`, and
+	// container-field-bound steps later get renamed once more to the
+	// destination field name.
+	base := deriveInputName(p.Result)
+	if base == "arg" {
+		// Anonymous or unnamed result type — fall back to the function
+		// name for a less generic label than "arg".
+		base = p.FuncName
+		if strings.HasPrefix(base, "New") && len(base) > 3 {
+			base = base[3:]
+		}
+		base = lowerFirst(base)
 	}
 	if base == "" {
 		base = "v"

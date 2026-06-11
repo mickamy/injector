@@ -9,8 +9,8 @@ import (
 
 // NewInfra initializes dependencies and constructs Infra.
 func NewInfra() (*Infra, error) {
-	readerDatabaseConfig := config.NewReaderDatabaseConfig()
-	database, err := infra.NewDatabase(readerDatabaseConfig)
+	databaseConfig := config.NewReaderDatabaseConfig()
+	database, err := infra.NewDatabase(databaseConfig)
 	if err != nil {
 		return nil, err
 	}

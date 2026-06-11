@@ -144,13 +144,12 @@ type Container struct {
 	}
 }
 
-func TestBuild_VarNameForBareNewFactory(t *testing.T) {
+func TestBuild_FieldBoundStepUsesFieldName(t *testing.T) {
 	t.Parallel()
 
-	// A package-level factory called bare-"New" used to produce a
-	// variable literally named "new", which both reads like the Go
-	// built-in and tells the reader nothing about the value. The variable
-	// should now be named after the result type instead.
+	// `Tx Transactor inject:""` should produce a variable named after the
+	// destination field — "tx" — rather than the function ("new") or the
+	// result type ("transactor").
 	src := `package test
 type Transactor struct{}
 func New() Transactor { return Transactor{} }
@@ -163,24 +162,79 @@ type Container struct {
 	if len(p.Steps) != 1 {
 		t.Fatalf("steps = %d, want 1", len(p.Steps))
 	}
-	if got, want := p.Steps[0].VarName, "transactor"; got != want {
+	if got, want := p.Steps[0].VarName, "tx"; got != want {
 		t.Errorf("var name = %q, want %q", got, want)
 	}
 }
 
-func TestBuild_VarNameForNewSuffixedFactoryUnchanged(t *testing.T) {
+func TestBuild_IntermediateStepUsesResultType(t *testing.T) {
 	t.Parallel()
 
+	// `New() *Foo` consumed transitively by `Make` (whose result is the
+	// container's field) is an intermediate step with no field name to
+	// borrow from. It should fall back to the result type — "foo" — not
+	// the function name.
 	src := `package test
-type DB struct{}
-func NewDB() *DB { return nil }
+type Foo struct{}
+type Bar struct{}
+func New() *Foo { return nil }
+func Make(f *Foo) *Bar { return nil }
 type Container struct {
-	DB *DB ` + "`inject:\"\"`" + `
+	Bar *Bar ` + "`inject:\"\"`" + `
 }
 `
 	p, _ := mustBuild(t, src, "Container", plan.Options{})
-	if got, want := p.Steps[0].VarName, "db"; got != want {
-		t.Errorf("var name = %q, want %q (NewDB should still strip to DB)", got, want)
+
+	var fooStep, barStep plan.Step
+	for _, s := range p.Steps {
+		switch {
+		case s.Provider != nil && s.Provider.FuncName == "New":
+			fooStep = s
+		case s.Provider != nil && s.Provider.FuncName == "Make":
+			barStep = s
+		}
+	}
+	if got, want := fooStep.VarName, "foo"; got != want {
+		t.Errorf("intermediate var name = %q, want %q", got, want)
+	}
+	if got, want := barStep.VarName, "bar"; got != want {
+		t.Errorf("field-bound var name = %q, want %q", got, want)
+	}
+}
+
+func TestBuild_FieldNameTakenForcesSuffix(t *testing.T) {
+	t.Parallel()
+
+	// An intermediate step's natural name ("tx", from result type Tx)
+	// already occupies that slot, then a field-bound step (field "Tx",
+	// holding a different type) tries to claim "tx" too. The field-bound
+	// step should cascade to "tx2" — the simple-cascade behavior chosen
+	// in option A.
+	src := `package test
+type Tx struct{}
+type Other struct{}
+func NewTx() Tx { return Tx{} }
+func NewOther(Tx) Other { return Other{} }
+type Container struct {
+	Tx Other ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	var intermediate, fieldBound plan.Step
+	for _, s := range p.Steps {
+		switch {
+		case s.Provider != nil && s.Provider.FuncName == "NewTx":
+			intermediate = s
+		case s.Provider != nil && s.Provider.FuncName == "NewOther":
+			fieldBound = s
+		}
+	}
+	if got, want := intermediate.VarName, "tx"; got != want {
+		t.Errorf("intermediate var = %q, want %q", got, want)
+	}
+	if got, want := fieldBound.VarName, "tx2"; got != want {
+		t.Errorf("field-bound var = %q, want %q (cascade)", got, want)
 	}
 }
 

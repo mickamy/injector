@@ -10,15 +10,15 @@ import (
 
 // NewContainer initializes dependencies and constructs Container.
 func NewContainer() (*Container, error) {
-	readerDatabaseConfig := config.NewReaderDatabaseConfig()
-	database, err := infra.NewDatabase(readerDatabaseConfig)
+	databaseConfig := config.NewReaderDatabaseConfig()
+	database, err := infra.NewDatabase(databaseConfig)
 	if err != nil {
 		return nil, err
 	}
-	user := service.NewUser(database)
+	userService := service.NewUser(database)
 
 	return &Container{
-		UserService: user,
+		UserService: userService,
 	}, nil
 }
 
