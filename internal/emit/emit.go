@@ -69,7 +69,10 @@ func Emit(packageName string, plans []plan.Plan) ([]byte, error) {
 	return src, nil
 }
 
-// collectImports records every package referenced by a plan in im.
+// collectImports records every package whose qualified name is written by
+// the generated code. The body only writes types in function signatures
+// (input types, return type, and *new(T) on the error path), so step
+// OutTypes and provider param types — values only — do not contribute.
 func collectImports(im *Imports, p plan.Plan) {
 	if p.ReturnType != nil {
 		im.AddType(p.ReturnType)
@@ -78,14 +81,8 @@ func collectImports(im *Imports, p plan.Plan) {
 		im.AddType(in.Type)
 	}
 	for _, s := range p.Steps {
-		if s.OutType != nil {
-			im.AddType(s.OutType)
-		}
 		if s.Kind == plan.StepKindProvider && s.Provider != nil {
 			im.AddProvider(s.Provider)
-			for _, pt := range s.Provider.Params {
-				im.AddType(pt)
-			}
 		}
 	}
 }
@@ -141,6 +138,9 @@ func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) error {
 		switch s.Kind {
 		case plan.StepKindInput:
 			// The input is already a function parameter — nothing to emit.
+		case plan.StepKindEmbedField:
+			in := p.Inputs[s.InputIndex]
+			fmt.Fprintf(w, "\t%s := %s.%s\n", s.VarName, in.Name, s.EmbedFieldName)
 		case plan.StepKindProvider:
 			if s.Provider == nil {
 				return fmt.Errorf("provider step %q has nil Provider", s.VarName)
