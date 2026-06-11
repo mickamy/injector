@@ -110,11 +110,12 @@ func writeContainer(w io.Writer, im *Imports, p plan.Plan) error {
 		fmt.Fprintf(w, "func %s(%s) %s {\n", name, paramSig, retSig)
 	}
 
-	if err := writeSteps(w, im, p, retSig); err != nil {
+	wrote, err := writeSteps(w, im, p, retSig)
+	if err != nil {
 		return err
 	}
 
-	writeStructLiteral(w, p)
+	writeStructLiteral(w, p, wrote)
 	if p.ReturnsError {
 		fmt.Fprint(w, ", nil")
 	}
@@ -126,7 +127,12 @@ func writeContainer(w io.Writer, im *Imports, p plan.Plan) error {
 	return nil
 }
 
-func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) error {
+// writeSteps emits step lines and reports whether any visible code was
+// written. Pure-input plans (e.g. a container whose only inputs are
+// non-blank inject:"arg" fields) produce no step lines, and the caller
+// uses the bool to decide whether to leave a blank line before the
+// struct literal.
+func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) (bool, error) {
 	zeroExpr := "nil"
 	if !isNilable(p.ReturnType) {
 		// For non-nilable return types we need an explicit zero value;
@@ -134,6 +140,7 @@ func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) error {
 		zeroExpr = "*new(" + retSig + ")"
 	}
 
+	wrote := false
 	for _, s := range p.Steps {
 		switch s.Kind {
 		case plan.StepKindInput:
@@ -141,9 +148,10 @@ func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) error {
 		case plan.StepKindEmbedField:
 			in := p.Inputs[s.InputIndex]
 			fmt.Fprintf(w, "\t%s := %s.%s\n", s.VarName, in.Name, s.EmbedFieldName)
+			wrote = true
 		case plan.StepKindProvider:
 			if s.Provider == nil {
-				return fmt.Errorf("provider step %q has nil Provider", s.VarName)
+				return wrote, fmt.Errorf("provider step %q has nil Provider", s.VarName)
 			}
 			args := make([]string, 0, len(s.ArgSteps))
 			for _, idx := range s.ArgSteps {
@@ -158,9 +166,10 @@ func writeSteps(w io.Writer, im *Imports, p plan.Plan, retSig string) error {
 			} else {
 				fmt.Fprintf(w, "\t%s := %s(%s)\n", s.VarName, call, strings.Join(args, ", "))
 			}
+			wrote = true
 		}
 	}
-	return nil
+	return wrote, nil
 }
 
 // isNilable reports whether the typed expression `nil` is a valid value of t.
@@ -180,8 +189,11 @@ func isNilable(t types.Type) bool {
 	return false
 }
 
-func writeStructLiteral(w io.Writer, p plan.Plan) {
-	fmt.Fprintf(w, "\n\treturn &%s{\n", p.Container.StructName)
+func writeStructLiteral(w io.Writer, p plan.Plan, leadingBlank bool) {
+	if leadingBlank {
+		fmt.Fprint(w, "\n")
+	}
+	fmt.Fprintf(w, "\treturn &%s{\n", p.Container.StructName)
 	for _, o := range p.Outputs {
 		v := p.Steps[o.StepIndex].VarName
 		fmt.Fprintf(w, "\t\t%s: %s,\n", o.FieldName, v)
