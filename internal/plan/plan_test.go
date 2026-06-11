@@ -381,6 +381,90 @@ type Container struct {
 	}
 }
 
+func TestBuild_EmbedPromotedField(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type Repo struct{}
+type Common struct{ DB *DB }
+type Infra struct{ Common }
+func NewRepo(db *DB) *Repo { return nil }
+type Container struct {
+	_    *Infra ` + "`inject:\"embed\"`" + `
+	Repo *Repo  ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	var embed plan.Step
+	for _, s := range p.Steps {
+		if s.Kind == plan.StepKindEmbedField {
+			embed = s
+			break
+		}
+	}
+	if embed.EmbedFieldName == "" {
+		t.Fatalf("no embed step found; steps=%+v", p.Steps)
+	}
+	if got, want := embed.EmbedFieldName, "Common.DB"; got != want {
+		t.Errorf("embed field name = %q, want %q", got, want)
+	}
+	if embed.VarName != "db" {
+		t.Errorf("embed var name = %q, want %q", embed.VarName, "db")
+	}
+}
+
+func TestBuild_EmbedShallowerShadowsDeeper(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type Repo struct{}
+type Common struct{ DB *DB }
+type Infra struct {
+	Common
+	DB *DB
+}
+func NewRepo(db *DB) *Repo { return nil }
+type Container struct {
+	_    *Infra ` + "`inject:\"embed\"`" + `
+	Repo *Repo  ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	for _, s := range p.Steps {
+		if s.Kind != plan.StepKindEmbedField {
+			continue
+		}
+		if s.EmbedFieldName != "DB" {
+			t.Errorf("embed field name = %q, want direct DB to shadow Common.DB", s.EmbedFieldName)
+		}
+	}
+}
+
+func TestBuild_EmbedAmbiguousAtSameDepth(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type Infra struct {
+	DB1 *DB
+	DB2 *DB
+}
+func NewRepo(db *DB) *DB { return nil }
+type Container struct {
+	_  *Infra ` + "`inject:\"embed\"`" + `
+	DB *DB   ` + "`inject:\"with=NewRepo\"`" + `
+}
+`
+	_, ds := build(t, src, "Container", plan.Options{})
+	if !diag.HasErrors(ds) {
+		t.Fatalf("expected ambiguity error for two *DB fields at same depth, got %v", ds)
+	}
+}
+
 func TestBuild_EmbedRejectsNonStruct(t *testing.T) {
 	t.Parallel()
 

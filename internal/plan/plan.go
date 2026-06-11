@@ -397,8 +397,11 @@ func buildInputs(c ir.Container) ([]Input, []diag.Diag) {
 // buildEmbeds walks the container's RoleEmbed fields and returns a TypeKey
 // → embedSource map of exported sub-fields available as resolution sources.
 // Each embed input must be a struct (or pointer to a struct); other shapes
-// produce diagnostics. The same exposed type from multiple embeds is also
-// an error to keep resolution unambiguous.
+// produce diagnostics. Promoted fields reached through anonymous embeds
+// are also exposed; shallower fields shadow deeper ones inside a single
+// embed (matching Go's selector semantics), while equal-depth duplicates
+// within one embed and same-type sources across two embeds are both
+// reported as errors.
 func buildEmbeds(c ir.Container, inputs []Input) (map[string]embedSource, []diag.Diag) {
 	out := map[string]embedSource{}
 	var diags []diag.Diag
@@ -424,24 +427,92 @@ func buildEmbeds(c ir.Container, inputs []Input) (map[string]embedSource, []diag
 				TypeString(f.Type)))
 			continue
 		}
-		for sf := range st.Fields() {
-			if !sf.Exported() {
-				continue
-			}
-			tk := TypeKey(sf.Type())
+		sources, srcDiags := embedSourcesOf(f.Type, st, idx, f.Pos, inputs)
+		diags = append(diags, srcDiags...)
+		for tk, src := range sources {
 			if existing, dup := out[tk]; dup {
 				diags = append(diags, diag.Errorf(f.Pos,
 					"embed: multiple sources for %s (also %s.%s)",
-					TypeString(sf.Type()),
+					TypeString(src.FieldType),
 					inputs[existing.InputIndex].Name, existing.FieldName))
 				continue
 			}
-			out[tk] = embedSource{
-				InputIndex: idx,
-				FieldName:  sf.Name(),
-				FieldType:  sf.Type(),
+			out[tk] = src
+		}
+	}
+	return out, diags
+}
+
+// embedSourcesOf walks a single embed input breadth-first, recording each
+// exported field (direct or promoted through anonymous embeds) keyed by
+// TypeKey. The traversal mirrors Go's selector promotion: a shallower
+// field wins over deeper ones of the same type, while same-depth
+// duplicates are reported as ambiguity diagnostics and skipped.
+func embedSourcesOf(
+	rootType types.Type,
+	rootSt *types.Struct,
+	inputIdx int,
+	fPos token.Position,
+	inputs []Input,
+) (map[string]embedSource, []diag.Diag) {
+	out := map[string]embedSource{}
+	claimed := map[string]bool{}
+	var diags []diag.Diag
+
+	type frame struct {
+		st     *types.Struct
+		prefix string
+	}
+	visited := map[string]bool{TypeKey(rootType): true}
+	level := []frame{{rootSt, ""}}
+
+	for len(level) > 0 {
+		var next []frame
+		levelCands := map[string][]embedSource{}
+
+		for _, fr := range level {
+			for sf := range fr.st.Fields() {
+				if !sf.Exported() {
+					continue
+				}
+				name := sf.Name()
+				if fr.prefix != "" {
+					name = fr.prefix + "." + name
+				}
+				tk := TypeKey(sf.Type())
+				if !claimed[tk] {
+					levelCands[tk] = append(levelCands[tk], embedSource{
+						InputIndex: inputIdx,
+						FieldName:  name,
+						FieldType:  sf.Type(),
+					})
+				}
+				if sf.Anonymous() && !visited[tk] {
+					visited[tk] = true
+					if subst, ok := structOf(sf.Type()); ok {
+						next = append(next, frame{subst, name})
+					}
+				}
 			}
 		}
+
+		for tk, cands := range levelCands {
+			if len(cands) > 1 {
+				names := make([]string, 0, len(cands))
+				for _, c := range cands {
+					names = append(names, inputs[c.InputIndex].Name+"."+c.FieldName)
+				}
+				diags = append(diags, diag.Errorf(fPos,
+					"embed: ambiguous source for %s at the same depth (%s)",
+					TypeString(cands[0].FieldType), strings.Join(names, ", ")))
+				claimed[tk] = true
+				continue
+			}
+			out[tk] = cands[0]
+			claimed[tk] = true
+		}
+
+		level = next
 	}
 	return out, diags
 }
@@ -520,7 +591,14 @@ func deriveInputName(t types.Type) string {
 }
 
 func varNameForEmbed(es embedSource, existing []Step) string {
-	base := lowerFirst(es.FieldName)
+	// FieldName may be a dotted selector (e.g. "CommonInfra.DB") when the
+	// source comes from a promoted field; only the leaf segment is a valid
+	// identifier base.
+	leaf := es.FieldName
+	if i := strings.LastIndex(leaf, "."); i >= 0 {
+		leaf = leaf[i+1:]
+	}
+	base := lowerFirst(leaf)
 	if base == "" {
 		base = "v"
 	}

@@ -338,6 +338,45 @@ func NewContainer(infra *Infra) *Container {
 	}
 }
 
+func TestEmit_EmbedPromotedField(t *testing.T) {
+	t.Parallel()
+
+	src := `package myapp
+type DB struct{}
+type Repo struct{}
+type Common struct{ DB *DB }
+type Infra struct{ Common }
+func NewRepo(db *DB) *Repo { return nil }
+type Container struct {
+	_    *Infra ` + "`inject:\"embed\"`" + `
+	Repo *Repo  ` + "`inject:\"\"`" + `
+}
+`
+	p := buildPlan(t, src)
+
+	got, err := emit.Emit("myapp", []plan.Plan{p})
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if !strings.Contains(string(got), "db := infra.Common.DB") {
+		t.Errorf("expected chained selector `db := infra.Common.DB`, got:\n%s", got)
+	}
+
+	fset := token.NewFileSet()
+	original, err := parser.ParseFile(fset, "myapp.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse original: %v", err)
+	}
+	generated, err := parser.ParseFile(fset, "injector_gen.go", got, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse generated: %v\n--- generated ---\n%s", err, got)
+	}
+	if _, err := (&types.Config{Importer: importer.Default()}).
+		Check("myapp", fset, []*ast.File{original, generated}, nil); err != nil {
+		t.Fatalf("type-check generated: %v\n--- generated ---\n%s", err, got)
+	}
+}
+
 // buildPlan runs scan + plan on src and returns the plan for the
 // "Container" struct. Tests in this file all use that conventional name and
 // default plan options.
