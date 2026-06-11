@@ -203,6 +203,13 @@ func decideRole(fieldName string, pt ParsedTag, pos token.Position) (ir.Role, *d
 		}
 		return ir.RoleOut, nil
 
+	case TagEmbed:
+		if !blank {
+			d := diag.Errorf(pos, `inject:"embed" requires a blank field (_)`)
+			return 0, &d
+		}
+		return ir.RoleEmbed, nil
+
 	case TagInvalid:
 		fallthrough
 	default:

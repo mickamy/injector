@@ -21,6 +21,10 @@ const (
 	TagArg
 	// TagReturns corresponds to inject:"returns" — return-type declaration.
 	TagReturns
+	// TagEmbed corresponds to inject:"embed" — a constructor input whose
+	// exported struct fields are exposed as resolution sources for the
+	// containing container.
+	TagEmbed
 )
 
 // ParsedTag holds the result of parsing the value of an inject:"..." tag.
@@ -46,6 +50,8 @@ type ParsedTag struct {
 //   - "arg"           input parameter (name derived from type)
 //   - "arg=<name>"    input parameter with explicit name
 //   - "returns"       return-type declaration
+//   - "embed"         input parameter whose exported struct fields are
+//     additionally exposed as resolution sources
 func ParseTag(value string) (ParsedTag, error) {
 	s := strings.TrimSpace(value)
 
@@ -74,6 +80,11 @@ func ParseTag(value string) (ParsedTag, error) {
 			return ParsedTag{}, errors.New(`inject:"returns" does not take a value`)
 		}
 		return ParsedTag{Kind: TagReturns}, nil
+	case "embed":
+		if hasEq {
+			return ParsedTag{}, errors.New(`inject:"embed" does not take a value`)
+		}
+		return ParsedTag{Kind: TagEmbed}, nil
 	default:
 		return ParsedTag{}, fmt.Errorf(`unknown inject tag form %q`, s)
 	}

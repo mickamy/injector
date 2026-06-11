@@ -70,6 +70,11 @@ const (
 	// RoleReturnsOnly is a blank field that declares the container's return
 	// type but otherwise contributes nothing to construction.
 	RoleReturnsOnly
+
+	// RoleEmbed is a blank field whose type is a struct (or pointer to a
+	// struct) passed in as a constructor argument and whose exported fields
+	// are usable as resolution sources for the containing container.
+	RoleEmbed
 )
 
 // Provider represents a top-level function that can produce a value used for
