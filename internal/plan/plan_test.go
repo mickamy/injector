@@ -369,6 +369,8 @@ type Container struct {
 			}
 		case plan.StepKindProvider:
 			foundProvider = true
+		case plan.StepKindInput:
+			// not relevant for this assertion
 		}
 	}
 	if !foundEmbed {

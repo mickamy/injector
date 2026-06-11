@@ -116,7 +116,7 @@ type app struct {
 			if f.ProviderRef.Raw != "NewWriter" {
 				t.Errorf("override ProviderRef = %q, want NewWriter", f.ProviderRef.Raw)
 			}
-		case ir.RoleOut, ir.RoleReturnsOnly:
+		case ir.RoleOut, ir.RoleReturnsOnly, ir.RoleEmbed:
 			// not relevant for this assertion
 		}
 	}

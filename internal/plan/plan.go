@@ -424,8 +424,7 @@ func buildEmbeds(c ir.Container, inputs []Input) (map[string]embedSource, []diag
 				TypeString(f.Type)))
 			continue
 		}
-		for i := range st.NumFields() {
-			sf := st.Field(i)
+		for sf := range st.Fields() {
 			if !sf.Exported() {
 				continue
 			}
