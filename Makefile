@@ -3,7 +3,7 @@ BUILD_DIR = bin
 
 # Examples that the e2e target regenerates. The two MUST examples are
 # regenerated with --must to produce MustNew* constructors.
-EXAMPLES_PLAIN = simple returns name-conflict embedded
+EXAMPLES_PLAIN = simple returns name-conflict embedded embed
 EXAMPLES_MUST  = with-error embedded-error
 
 .PHONY: all build install uninstall clean test test-unit test-e2e lint

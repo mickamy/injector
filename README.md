@@ -119,6 +119,7 @@ func NewContainer() *Container {
 | `inject:"arg=name"` | `_` | constructor input with explicit name |
 | `inject:"with=Foo"` | `_` | override the provider for this type |
 | `inject:"returns"` | `_` | declare return type only (no field stored) |
+| `inject:"embed"` | `_` | constructor input whose exported fields are usable as resolution sources |
 
 A blank field (`_`) never appears in the struct literal; only its tag controls behavior.
 
@@ -174,8 +175,9 @@ For each output field of a container, injector chooses a provider in the followi
 
 1. **Constructor input** — if any `_ Type inject:"arg"` field has a matching type, the input is used.
 2. **Override** — if any `_ Type inject:"with=Foo"` field is in scope for that type, the named provider is used.
-3. **By name** — if the field itself has `inject:"with=Foo"`, the named provider is used (and its result type must match).
-4. **By type** — otherwise, the unique provider whose result type matches is used. Multiple matches produce an error with candidates listed.
+3. **Embed source** — if any `_ Container inject:"embed"` input exposes an exported field of the requested type, that field is read via `arg.Field`.
+4. **By name** — if the field itself has `inject:"with=Foo"`, the named provider is used (and its result type must match).
+5. **By type** — otherwise, the unique provider whose result type matches is used. Multiple matches produce an error with candidates listed.
 
 Resolution recurses into the chosen provider's parameters until every dependency is satisfied. Cycles are reported as errors.
 
@@ -199,6 +201,7 @@ Resolution recurses into the chosen provider's parameters until every dependency
 | [`example/returns/`](./example/returns/) | unexported struct exposed as an interface (`inject:"returns"`) |
 | [`example/name-conflict/`](./example/name-conflict/) | multiple containers in one package with same-named providers across different packages |
 | [`example/embedded/`](./example/embedded/) | sharing a piece of infrastructure across containers via `_ inject:"arg"` |
+| [`example/embed/`](./example/embed/) | reusing a previously-built container via `_ inject:"embed"` to pull multiple fields at once |
 | [`example/embedded-error/`](./example/embedded-error/) | embedded + `(T, error)` providers + `--must` |
 
 Regenerate every example and run the test suite with:
