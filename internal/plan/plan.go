@@ -652,10 +652,21 @@ func varNameForEmbed(es embedSource, existing []Step) string {
 
 func varNameForProvider(p *ir.Provider, existing []Step) string {
 	base := p.FuncName
-	if strings.HasPrefix(base, "New") && len(base) > 3 {
+	switch {
+	case strings.HasPrefix(base, "New") && len(base) > 3:
+		// "NewFoo" → "Foo": the convention encodes the result in the
+		// suffix, so the suffix is what we want as the variable name.
 		base = base[3:]
+	case base == "New":
+		// Bare factory: no suffix to mine, so use the result type's
+		// name. Otherwise the variable would be called `new`, which
+		// reads as the Go built-in.
+		base = ""
 	}
 	base = lowerFirst(base)
+	if base == "" {
+		base = deriveInputName(p.Result)
+	}
 	if base == "" {
 		base = "v"
 	}

@@ -144,6 +144,46 @@ type Container struct {
 	}
 }
 
+func TestBuild_VarNameForBareNewFactory(t *testing.T) {
+	t.Parallel()
+
+	// A package-level factory called bare-"New" used to produce a
+	// variable literally named "new", which both reads like the Go
+	// built-in and tells the reader nothing about the value. The variable
+	// should now be named after the result type instead.
+	src := `package test
+type Transactor struct{}
+func New() Transactor { return Transactor{} }
+type Container struct {
+	Tx Transactor ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	if len(p.Steps) != 1 {
+		t.Fatalf("steps = %d, want 1", len(p.Steps))
+	}
+	if got, want := p.Steps[0].VarName, "transactor"; got != want {
+		t.Errorf("var name = %q, want %q", got, want)
+	}
+}
+
+func TestBuild_VarNameForNewSuffixedFactoryUnchanged(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+func NewDB() *DB { return nil }
+type Container struct {
+	DB *DB ` + "`inject:\"\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+	if got, want := p.Steps[0].VarName, "db"; got != want {
+		t.Errorf("var name = %q, want %q (NewDB should still strip to DB)", got, want)
+	}
+}
+
 func TestBuild_NonBlankWithActsAsOverride(t *testing.T) {
 	t.Parallel()
 
