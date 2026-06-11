@@ -549,11 +549,22 @@ func structOf(t types.Type) (*types.Struct, bool) {
 	return nil, false
 }
 
+// buildOverrides walks fields whose inject tag names a specific provider
+// (`inject:"with=..."`) and indexes them by their declared type. The
+// resolver consults this map ahead of provider-by-type lookup, so that any
+// transitive dependency inside the same container resolves to the same
+// provider the user picked for the field.
+//
+// Both blank (RoleOverride) and non-blank (RoleOut with a ref) fields
+// contribute. The non-blank case lets a stored field double as a
+// container-wide override; users no longer need a redundant blank twin to
+// disambiguate sibling resolutions.
 func buildOverrides(c ir.Container, idx *Index) (map[string]*ir.Provider, []diag.Diag) {
 	out := map[string]*ir.Provider{}
+	posByType := map[string]token.Position{}
 	var diags []diag.Diag
 	for _, f := range c.Fields {
-		if f.Role != ir.RoleOverride {
+		if f.Role != ir.RoleOverride && f.Role != ir.RoleOut {
 			continue
 		}
 		if !f.ProviderRef.HasRef() {
@@ -577,7 +588,17 @@ func buildOverrides(c ir.Container, idx *Index) (map[string]*ir.Provider, []diag
 				"provider %q does not produce %s", f.ProviderRef.Raw, TypeString(f.Type)).
 				WithHints(FormatCandidates(candidates)...))
 		case 1:
-			out[TypeKey(f.Type)] = matched[0]
+			tk := TypeKey(f.Type)
+			if existing, dup := out[tk]; dup && existing != matched[0] {
+				diags = append(diags, diag.Errorf(f.Pos,
+					"conflicting providers selected for %s: %s vs %s (also at %s)",
+					TypeString(f.Type),
+					ProviderName(existing), ProviderName(matched[0]),
+					posByType[tk]))
+				continue
+			}
+			out[tk] = matched[0]
+			posByType[tk] = f.Pos
 		default:
 			diags = append(diags, diag.Errorf(f.Pos,
 				"reference %q is ambiguous", f.ProviderRef.Raw).

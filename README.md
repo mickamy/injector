@@ -176,7 +176,7 @@ CLI flags are merged **per key** with directive values: a directive that sets `m
 For each output field of a container, injector chooses a provider in the following priority:
 
 1. **Constructor input** — if any `_ Type inject:"arg"` field has a matching type, the input is used.
-2. **Override** — if any `_ Type inject:"with=Foo"` field is in scope for that type, the named provider is used.
+2. **Override** — if any field (blank or named) has `inject:"with=Foo"` for that type, the named provider is used. Same-type fields that select different providers are rejected as conflicting.
 3. **Embed source** — if any `_ Container inject:"embed"` input exposes an exported field of the requested type, that field is read via `arg.Field`.
 4. **By name** — if the field itself has `inject:"with=Foo"`, the named provider is used (and its result type must match).
 5. **By type** — otherwise, the unique provider whose result type matches is used. Multiple matches produce an error with candidates listed.
