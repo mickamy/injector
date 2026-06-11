@@ -83,6 +83,38 @@ func NewDB() *DB { return nil }
 	}
 }
 
+func TestProviders_TypeAliasResult(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+
+type DB struct{}
+type Greeter interface{ Greet() string }
+
+type DBAlias = DB
+type DBPtrAlias = *DB
+type GreeterAlias = Greeter
+
+func NewDBAlias() DBAlias { return DBAlias{} }
+func NewDBPtrAlias() DBPtrAlias { return nil }
+func NewGreeterAlias() GreeterAlias { return nil }
+func NewDBAliasWithError() (DBAlias, error) { return DBAlias{}, nil }
+`
+	pkg := loadTestPackage(t, src)
+	ps, ds := scan.Providers([]*packages.Package{pkg})
+
+	if diag.HasErrors(ds) {
+		t.Fatalf("unexpected error diags: %v", ds)
+	}
+
+	got := providerNames(ps)
+	slices.Sort(got)
+	want := []string{"NewDBAlias", "NewDBAliasWithError", "NewDBPtrAlias", "NewGreeterAlias"}
+	if !slices.Equal(got, want) {
+		t.Errorf("provider names = %v, want %v", got, want)
+	}
+}
+
 func TestProviders_RecordsParams(t *testing.T) {
 	t.Parallel()
 
