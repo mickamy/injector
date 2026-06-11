@@ -335,6 +335,47 @@ func NewX() X { return X{} }`,
 	}
 }
 
+func TestBuild_NonBlankArgIsStored(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type Container struct {
+	DB *DB ` + "`inject:\"arg\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+
+	if len(p.Inputs) != 1 || p.Inputs[0].Name != "db" {
+		t.Fatalf("inputs = %+v, want one named db", p.Inputs)
+	}
+	if len(p.Outputs) != 1 || p.Outputs[0].FieldName != "DB" {
+		t.Fatalf("outputs = %+v, want one for DB", p.Outputs)
+	}
+	if p.Steps[p.Outputs[0].StepIndex].Kind != plan.StepKindInput {
+		t.Errorf("expected stored arg output to point at an input step; got %+v",
+			p.Steps[p.Outputs[0].StepIndex])
+	}
+}
+
+func TestBuild_NonBlankArgWithCustomName(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+type DB struct{}
+type Container struct {
+	DB *DB ` + "`inject:\"arg=database\"`" + `
+}
+`
+	p, _ := mustBuild(t, src, "Container", plan.Options{})
+	if p.Inputs[0].Name != "database" {
+		t.Errorf("input name = %q, want database", p.Inputs[0].Name)
+	}
+	if p.Outputs[0].FieldName != "DB" {
+		t.Errorf("output field = %q, want DB", p.Outputs[0].FieldName)
+	}
+}
+
 func TestBuild_EmbedExposesFields(t *testing.T) {
 	t.Parallel()
 

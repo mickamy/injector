@@ -121,15 +121,27 @@ func Build(c ir.Container, idx *Index, opts Options) (Plan, []diag.Diag) {
 
 	var outputs []Output
 	for _, f := range c.Fields {
-		if f.Role != ir.RoleOut {
-			continue
+		switch f.Role {
+		case ir.RoleOut:
+			stepIdx, ds := r.resolveField(f)
+			diags = append(diags, ds...)
+			if stepIdx < 0 {
+				continue
+			}
+			outputs = append(outputs, Output{FieldName: f.Name, StepIndex: stepIdx})
+		case ir.RoleArg:
+			if f.Name == "_" {
+				continue
+			}
+			stepIdx, ds := r.resolveByType(f.Type, f.Pos, "field "+f.Name)
+			diags = append(diags, ds...)
+			if stepIdx < 0 {
+				continue
+			}
+			outputs = append(outputs, Output{FieldName: f.Name, StepIndex: stepIdx})
+		case ir.RoleOverride, ir.RoleReturnsOnly, ir.RoleEmbed:
+			// Handled in buildOverrides / resolveReturnType / buildEmbeds.
 		}
-		stepIdx, ds := r.resolveField(f)
-		diags = append(diags, ds...)
-		if stepIdx < 0 {
-			continue
-		}
-		outputs = append(outputs, Output{FieldName: f.Name, StepIndex: stepIdx})
 	}
 
 	returnsErr := false

@@ -156,6 +156,34 @@ type Container struct {
 	}
 }
 
+func TestContainers_NonBlankArg(t *testing.T) {
+	t.Parallel()
+
+	src := `package test
+
+type DB struct{}
+
+type Container struct {
+	DB *DB ` + "`inject:\"arg\"`" + `
+}
+`
+	pkg := loadTestPackage(t, src)
+	cs, ds := scan.Containers([]*packages.Package{pkg})
+	if diag.HasErrors(ds) {
+		t.Fatalf("unexpected error diags: %v", ds)
+	}
+	if len(cs) != 1 || len(cs[0].Fields) != 1 {
+		t.Fatalf("containers/fields shape unexpected: %+v", cs)
+	}
+	f := cs[0].Fields[0]
+	if f.Role != ir.RoleArg {
+		t.Errorf("role = %v, want RoleArg", f.Role)
+	}
+	if f.Name != "DB" {
+		t.Errorf("name = %q, want DB", f.Name)
+	}
+}
+
 func TestContainers_EmbedRequiresBlankField(t *testing.T) {
 	t.Parallel()
 
