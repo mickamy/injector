@@ -111,12 +111,14 @@ func Build(c ir.Container, idx *Index, opts Options) (Plan, []diag.Diag) {
 	diags = append(diags, emDiags...)
 
 	r := &resolver{
-		idx:       idx,
-		inputs:    inputs,
-		overrides: overrides,
-		embeds:    embeds,
-		stepByKey: map[string]int{},
-		active:    map[string]bool{},
+		idx:          idx,
+		inputs:       inputs,
+		overrides:    overrides,
+		embeds:       embeds,
+		stepByKey:    map[string]int{},
+		active:       map[string]bool{},
+		selfPkgPath:  c.PkgPath,
+		selfFuncName: constructorName,
 	}
 
 	var outputs []Output
@@ -175,6 +177,15 @@ type resolver struct {
 	steps     []Step
 	stepByKey map[string]int
 	active    map[string]bool
+
+	// selfPkgPath and selfFuncName identify this container's own
+	// generated constructor. They are used to filter the by-type lookup
+	// so a container whose `inject:"returns"` declares an interface that
+	// matches an unrelated provider does not see its own previously
+	// emitted constructor as a candidate (a self-loop that would also
+	// produce a spurious "multiple providers" error).
+	selfPkgPath  string
+	selfFuncName string
 }
 
 // embedSource describes one exported field of an inject:"embed" input that
@@ -190,6 +201,24 @@ func (r *resolver) resolveField(f ir.Field) (int, []diag.Diag) {
 		return r.resolveByRef(f.Type, f.ProviderRef.Raw, f.Pos)
 	}
 	return r.resolveByType(f.Type, f.Pos, "field "+f.Name)
+}
+
+// excludeSelfProvider drops the container's own previously generated
+// constructor from the candidate list so a `inject:"returns"` field does
+// not pick itself up via type lookup. Callers that name a provider
+// explicitly via inject:"with=..." are not affected.
+func (r *resolver) excludeSelfProvider(candidates []*ir.Provider) []*ir.Provider {
+	if r.selfFuncName == "" {
+		return candidates
+	}
+	kept := candidates[:0:0]
+	for _, c := range candidates {
+		if c.PkgPath == r.selfPkgPath && c.FuncName == r.selfFuncName {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	return kept
 }
 
 func (r *resolver) resolveByType(want types.Type, pos token.Position, parent string) (int, []diag.Diag) {
@@ -210,6 +239,7 @@ func (r *resolver) resolveByType(want types.Type, pos token.Position, parent str
 	}
 
 	candidates := r.idx.LookupByType(want)
+	candidates = r.excludeSelfProvider(candidates)
 	if len(candidates) == 0 {
 		return -1, []diag.Diag{
 			diag.Errorf(pos, "no provider for %s (required by %s)", TypeString(want), parent),
