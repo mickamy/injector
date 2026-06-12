@@ -344,6 +344,35 @@ type Container struct {
 	}
 }
 
+func TestBuild_SelfGeneratedProviderIgnored(t *testing.T) {
+	t.Parallel()
+
+	// A `inject:"returns"` container whose previously generated
+	// constructor is now visible to the provider scan must not pick that
+	// constructor up as a candidate when resolving its own field, or it
+	// would loop forever. The unrelated, non-self provider remains usable.
+	src := `package test
+type Greeter interface{ Greet() string }
+type greeterImpl struct{}
+func (greeterImpl) Greet() string { return "" }
+func NewGreeterImpl() Greeter { return greeterImpl{} }
+
+// Pretend this came from a previous generation of NewWrapper.
+func NewWrapper() Greeter { return nil }
+
+type wrapper struct {
+	service Greeter ` + "`inject:\"returns\"`" + `
+}
+`
+	p, ds := build(t, src, "wrapper", plan.Options{})
+	if diag.HasErrors(ds) {
+		t.Fatalf("expected the self provider NewWrapper to be filtered out, got %v", ds)
+	}
+	if len(p.Steps) != 1 || p.Steps[0].Provider == nil || p.Steps[0].Provider.FuncName != "NewGreeterImpl" {
+		t.Errorf("expected NewGreeterImpl to be the only provider step; got %+v", p.Steps)
+	}
+}
+
 func TestBuild_FieldNameTakenForcesSuffix(t *testing.T) {
 	t.Parallel()
 
