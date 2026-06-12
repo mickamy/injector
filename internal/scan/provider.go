@@ -45,8 +45,15 @@ func providersInPackage(pkg *packages.Package) ([]ir.Provider, []diag.Diag) {
 		providers []ir.Provider
 		diags     []diag.Diag
 	)
+	// Generated files are intentionally NOT skipped here. Containers in
+	// generated files would re-trigger generation (and are filtered by
+	// containersInPackage), but provider functions emitted by an earlier
+	// generation are ordinary top-level Go functions whose results other
+	// packages may legitimately consume via type lookup. Skipping them
+	// would hide the constructors injector itself produced from downstream
+	// containers.
 	for _, file := range pkg.Syntax {
-		if file == nil || isGeneratedFile(file) {
+		if file == nil {
 			continue
 		}
 		for _, decl := range file.Decls {
