@@ -207,17 +207,28 @@ func (r *resolver) resolveField(f ir.Field) (int, []diag.Diag) {
 // constructor from the candidate list so a `inject:"returns"` field does
 // not pick itself up via type lookup. Callers that name a provider
 // explicitly via inject:"with=..." are not affected.
+//
+// The common case is that the self-provider is not in the candidate
+// list at all (most fields request types unrelated to the container's
+// own return type), so the function returns the original slice without
+// allocating when there is nothing to exclude.
 func (r *resolver) excludeSelfProvider(candidates []*ir.Provider) []*ir.Provider {
 	if r.selfFuncName == "" {
 		return candidates
 	}
-	kept := candidates[:0:0]
-	for _, c := range candidates {
+	selfIdx := -1
+	for i, c := range candidates {
 		if c.PkgPath == r.selfPkgPath && c.FuncName == r.selfFuncName {
-			continue
+			selfIdx = i
+			break
 		}
-		kept = append(kept, c)
 	}
+	if selfIdx < 0 {
+		return candidates
+	}
+	kept := make([]*ir.Provider, 0, len(candidates)-1)
+	kept = append(kept, candidates[:selfIdx]...)
+	kept = append(kept, candidates[selfIdx+1:]...)
 	return kept
 }
 
