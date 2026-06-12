@@ -226,6 +226,15 @@ func (r *resolver) excludeSelfProvider(candidates []*ir.Provider) []*ir.Provider
 	if selfIdx < 0 {
 		return candidates
 	}
+	// Boundary cases — the self-provider sits at one end of the slice,
+	// so a sub-slice is enough and no allocation is needed. This covers
+	// the very common case of a single matching candidate.
+	if selfIdx == 0 {
+		return candidates[1:]
+	}
+	if selfIdx == len(candidates)-1 {
+		return candidates[:selfIdx]
+	}
 	kept := make([]*ir.Provider, 0, len(candidates)-1)
 	kept = append(kept, candidates[:selfIdx]...)
 	kept = append(kept, candidates[selfIdx+1:]...)
