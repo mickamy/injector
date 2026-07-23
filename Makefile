@@ -43,17 +43,16 @@ test: test-unit test-e2e
 test-unit:
 	go test ./internal/... -race
 
-test-e2e:
+test-e2e: build
 	@for ex in $(EXAMPLES_PLAIN); do \
 		echo ">>> regenerate example/$$ex"; \
-		go run . ./example/$$ex/... || exit 1; \
+		(cd example && ../$(BUILD_DIR)/$(APP_NAME) ./$$ex/...) || exit 1; \
 	done
 	@for ex in $(EXAMPLES_MUST); do \
 		echo ">>> regenerate example/$$ex --must"; \
-		go run . --must ./example/$$ex/... || exit 1; \
+		(cd example && ../$(BUILD_DIR)/$(APP_NAME) --must ./$$ex/...) || exit 1; \
 	done
-	go vet ./example/...
-	go build ./example/...
+	cd example && go vet ./... && go build ./...
 
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 || { \
