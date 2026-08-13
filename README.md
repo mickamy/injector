@@ -1,5 +1,8 @@
 # injector
 
+> [!IMPORTANT]
+> This repository is archived. Development continues in [kanna](https://github.com/go-kanna/kanna), where injector became [`kanna-di`](https://github.com/go-kanna/kanna#kanna-di).
+
 **injector** is a command-line tool that generates type-safe dependency-injection (DI) code for Go projects.
 
 Unlike traditional DI frameworks that rely on provider sets or runtime containers, injector uses **Go's type system** plus a small set of struct tags and an optional comment directive to describe dependency injection in a clear and explicit way.
